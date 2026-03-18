@@ -1,0 +1,33 @@
+name: block_editor_plugins
+description: >-
+  Extended and optional block plugins for the block_editor package. Provides
+  additional block types, embeds, and integrations beyond the built-in set.
+version: 0.0.1
+publish_to: none
+resolution: workspace
+homepage: https://github.com/stanlysilas/block_editor
+repository: https://github.com/stanlysilas/block_editor
+issue_tracker: https://github.com/stanlysilas/block_editor/issues
+
+topics:
+  - editor
+  - rich-text
+  - blocks
+  - flutter
+  - plugins
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  block_editor:
+    path: ../block_editor
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  test: ^1.25.0
+  lints: ^6.1.0

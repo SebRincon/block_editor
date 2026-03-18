@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Analyze / Format / Test (Ubuntu)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Activate Melos
+        run: dart pub global activate melos
+
+      - name: Bootstrap workspace
+        run: melos bootstrap
+
+      - name: Verify dart format
+        run: melos run format
+
+      - name: Run dart analyze
+        run: melos run analyze
+
+      - name: Run tests
+        run: melos run test
+
+      - name: Print package versions
+        run: |
+          echo "block_editor: $(grep '^version:' packages/block_editor/pubspec.yaml | awk '{print $2}')"
+          echo "block_editor_plugins: $(grep '^version:' packages/block_editor_plugins/pubspec.yaml | awk '{print $2}')"
+
+  platform-builds:
+    name: Build Validation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Activate Melos
+        run: dart pub global activate melos
+
+      - name: Bootstrap workspace
+        run: melos bootstrap
+
+      - name: Build example app (Android)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: example
+        run: flutter build apk --debug
+
+      - name: Build example app (macOS)
+        if: matrix.os == 'macos-latest'
+        working-directory: example
+        run: flutter build macos --debug
+
+      - name: Build example app (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: example
+        run: flutter build windows --debug
+
+      - name: Build example app (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: example
+        run: flutter build linux --debug
+
+      - name: Build example app (Web)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: example
+        run: flutter build web
+
+  publish-dry-run:
+    name: Publish Dry Run
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Activate Melos
+        run: dart pub global activate melos
+
+      - name: Bootstrap workspace
+        run: melos bootstrap
+
+      - name: Validate publishability (dry run)
+        run: melos run publish:dry-run

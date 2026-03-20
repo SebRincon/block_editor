@@ -253,4 +253,106 @@ void main() {
       expect(richText.textAlign, TextAlign.center);
     });
   });
+
+  group('RichTextRenderer — composing range', () {
+    testWidgets('null composingRange renders without error', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          RichTextRenderer(
+            delta: TextDelta.fromPlainText('hello'),
+            blockId: 'b1',
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('composingRange applies underline to composing span', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          RichTextRenderer(
+            delta: TextDelta.fromPlainText('hello'),
+            blockId: 'b1',
+            composingRange: const TextRange(start: 1, end: 3),
+          ),
+        ),
+      );
+      final text = tester.widget<Text>(find.byType(Text));
+      final root = text.textSpan! as TextSpan;
+      final composingSpan = root.children!.whereType<TextSpan>().firstWhere(
+        (s) => s.text == 'el',
+      );
+      expect(
+        composingSpan.style!.decoration!.contains(TextDecoration.underline),
+        isTrue,
+      );
+    });
+
+    testWidgets(
+      'characters outside composingRange have no composing underline',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            RichTextRenderer(
+              delta: TextDelta.fromPlainText('hello'),
+              blockId: 'b1',
+              composingRange: const TextRange(start: 1, end: 3),
+            ),
+          ),
+        );
+        final text = tester.widget<Text>(find.byType(Text));
+        final root = text.textSpan! as TextSpan;
+        final beforeSpan = root.children!.whereType<TextSpan>().firstWhere(
+          (s) => s.text == 'h',
+        );
+        expect(beforeSpan.style?.decoration, isNull);
+      },
+    );
+
+    testWidgets('empty composingRange renders without underline', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          RichTextRenderer(
+            delta: TextDelta.fromPlainText('hello'),
+            blockId: 'b1',
+            composingRange: TextRange.empty,
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      final span = firstSpanFrom(tester);
+      expect(span.style?.decoration, isNull);
+    });
+
+    testWidgets('composingRange combines with existing bold formatting', (
+      tester,
+    ) async {
+      final delta = TextDelta.fromPlainText(
+        'hello',
+      ).applyAttributes(0, 5, const InlineAttributes(bold: true));
+      await tester.pumpWidget(
+        wrap(
+          RichTextRenderer(
+            delta: delta,
+            blockId: 'b1',
+            composingRange: const TextRange(start: 0, end: 3),
+          ),
+        ),
+      );
+      final text = tester.widget<Text>(find.byType(Text));
+      final root = text.textSpan! as TextSpan;
+      final composingSpan = root.children!.whereType<TextSpan>().firstWhere(
+        (s) => s.text == 'hel',
+      );
+      expect(composingSpan.style!.fontWeight, FontWeight.bold);
+      expect(
+        composingSpan.style!.decoration!.contains(TextDecoration.underline),
+        isTrue,
+      );
+    });
+  });
 }

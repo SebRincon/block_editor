@@ -186,7 +186,7 @@ void main() {
         ),
       );
       final widgets = tester
-          .widgetList<NumberedListBlock>(find.byType(NumberedListBlock))
+          .widgetList<NumberedListWidget>(find.byType(NumberedListWidget))
           .toList();
       expect(widgets[0].number, 1);
       expect(widgets[1].number, 2);
@@ -220,7 +220,7 @@ void main() {
         ),
       );
       final widgets = tester
-          .widgetList<NumberedListBlock>(find.byType(NumberedListBlock))
+          .widgetList<NumberedListWidget>(find.byType(NumberedListWidget))
           .toList();
       expect(widgets[0].number, 1);
       expect(widgets[1].number, 1);

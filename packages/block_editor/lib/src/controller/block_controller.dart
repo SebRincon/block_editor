@@ -1,3 +1,5 @@
+// ignore_for_file: close_sinks
+
 library;
 
 import 'dart:async';
@@ -33,7 +35,7 @@ final class DocumentChange {
 /// The central state engine for a block editor document.
 ///
 /// [BlockController] owns the [BlockDocument], the undo and redo stacks,
-/// the current [EditorSelection], and the two broadcast streams that the
+/// the current [EditorSelection], and the broadcast streams that the
 /// rendering layer subscribes to.
 ///
 /// Every document mutation is atomic: a snapshot is pushed to the undo stack,
@@ -57,6 +59,7 @@ final class BlockController {
   final _streamController = StreamController<DocumentChange>.broadcast();
   final _selectionStreamController =
       StreamController<EditorSelection>.broadcast();
+  final _blockStreamControllers = <String, StreamController<BlockNode>>{};
   EditorSelection _selection = EditorSelection.none;
 
   /// Emits a [DocumentChange] on every structural document mutation.
@@ -101,6 +104,23 @@ final class BlockController {
     }
   }
 
+  /// Returns a [Stream] that emits the updated [BlockNode] whenever the block
+  /// identified by [blockId] changes.
+  ///
+  /// The stream is created on first access and reused for subsequent calls
+  /// with the same [blockId]. It is closed automatically when the block is
+  /// deleted from the document.
+  ///
+  /// Subscribers should cancel their subscription when the block widget is
+  /// disposed to avoid receiving events after the widget is removed.
+  Stream<BlockNode> streamForBlock(String blockId) {
+    if (!_blockStreamControllers.containsKey(blockId)) {
+      _blockStreamControllers[blockId] =
+          StreamController<BlockNode>.broadcast();
+    }
+    return _blockStreamControllers[blockId]!.stream;
+  }
+
   void _pushSnapshot() {
     _undoStack.add(_document);
     if (_undoStack.length > _maxUndoSteps + 1) _undoStack.removeAt(0);
@@ -110,6 +130,15 @@ final class BlockController {
   void _emit(DocumentChange change) {
     _document = change.document;
     _streamController.add(change);
+    for (final id in change.affectedIds) {
+      final node = _document.findById(id);
+      final sc = _blockStreamControllers[id];
+      if (sc != null && !sc.isClosed) {
+        if (node != null) {
+          sc.add(node);
+        }
+      }
+    }
   }
 
   List<BlockNode> _replaceInList(
@@ -167,7 +196,8 @@ final class BlockController {
 
   /// Removes the block identified by [id] from the document.
   ///
-  /// Does nothing if no block with [id] exists.
+  /// Does nothing if no block with [id] exists. Closes and removes the
+  /// per-block stream for [id] if one is open.
   void delete(String id) {
     if (_document.findById(id) == null) return;
     _pushSnapshot();
@@ -179,6 +209,8 @@ final class BlockController {
         affectedIds: [id],
       ),
     );
+    final sc = _blockStreamControllers.remove(id);
+    if (sc != null && !sc.isClosed) sc.close();
   }
 
   /// Replaces the block identified by [id] with [updatedNode].
@@ -295,8 +327,7 @@ final class BlockController {
 
   /// Updates the current selection and emits on [selectionStream].
   ///
-  /// Does not push an undo snapshot. Selection is not part of document
-  /// content and is never included in the undo history.
+  /// Does not push an undo snapshot.
   void updateSelection(EditorSelection selection) {
     _selection = selection;
     _selectionStreamController.add(_selection);
@@ -311,9 +342,7 @@ final class BlockController {
 
   /// Expands the selection to cover the entire document.
   ///
-  /// Sets an [ExpandedSelection] from offset 0 of the first block to the
-  /// last character offset of the last block. Does nothing when the document
-  /// has no blocks.
+  /// Does nothing when the document has no blocks.
   void selectAll() {
     final flat = _document.flatten();
     if (flat.isEmpty) return;
@@ -333,10 +362,32 @@ final class BlockController {
     updateSelection(EditorSelection.none);
   }
 
-  /// Releases all stream resources. Call when the controller is no longer
-  /// needed.
+  /// Returns all unique tag strings present anywhere in the current document.
+  ///
+  /// Walks every block's [TextDelta] and collects the [TagOp.tag] value from
+  /// every [TagOp] encountered. The returned set preserves insertion order and
+  /// contains no duplicates. The document is never modified by this call.
+  Set<String> get tags {
+    final result = <String>{};
+    for (final block in _document.flatten()) {
+      final delta = block.delta;
+      if (delta == null) continue;
+      for (final op in delta.ops) {
+        if (op is TagOp) result.add(op.tag);
+      }
+    }
+    return result;
+  }
+
+  /// Releases all stream resources.
+  ///
+  /// Call when the controller is no longer needed.
   void dispose() {
     _streamController.close();
     _selectionStreamController.close();
+    for (final sc in _blockStreamControllers.values) {
+      if (!sc.isClosed) sc.close();
+    }
+    _blockStreamControllers.clear();
   }
 }

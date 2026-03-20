@@ -10,6 +10,12 @@
 
 Closes #
 
+## Branch
+
+- [ ] `develop` → `main` (phase completion merge — requires Boardroom sign-off)
+- [ ] `fix/*` → `develop` (bug fix)
+- [ ] `chore/*` → `develop` (tooling or maintenance)
+
 ## Type of Change
 
 - [ ] `feat` — New feature
@@ -31,7 +37,7 @@ Closes #
 
 ## Pre-Merge Checklist
 
-All items must be checked before this PR can be merged into `main`. Do not merge with unchecked boxes unless you have explicitly discussed the exception with the project maintainer.
+All items must be checked before this PR can be merged. Do not merge with unchecked boxes unless explicitly discussed with the project maintainer.
 
 ### Code Quality
 
@@ -68,8 +74,10 @@ All items must be checked before this PR can be merged into `main`. Do not merge
 - [ ] The example app builds without errors (`flutter build` verified locally on at least one platform)
 - [ ] The example app has not had existing demonstrations removed or broken
 
-### Release Gate (release PRs targeting `main` only)
+### Phase Completion Gate (`develop` → `main` PRs only)
 
+- [ ] Boardroom sign-off received for this phase
+- [ ] All phase test count gates met and confirmed
 - [ ] `melos run publish:dry-run` passes with no errors
 - [ ] A GitHub release draft exists with the correct semver tag and the CHANGELOG entry as release notes
 - [ ] The example app has been verified to build and run on at least one target platform end-to-end

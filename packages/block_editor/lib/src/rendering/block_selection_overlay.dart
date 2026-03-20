@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 /// Paints a full-width highlight rectangle behind a fully-covered block.
 ///
-/// Used by [BlockSelectionOverlay] when [isCovered] is true. Blocks that
+/// Used by [BlockSelectionOverlay] when isCovered is true. Blocks that
 /// are only partially covered — the start and end blocks of an
 /// [ExpandedSelection] — are highlighted inline by [RichTextRenderer] and
 /// do not use this painter.

@@ -3,26 +3,25 @@ library;
 import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
 
-/// Maps a [BlockNode] to its corresponding block widget.
+/// Maps a [BlockNode] to its block widget via [BlockRegistry].
 ///
-/// [BlockRenderer] is the internal registry for all built-in block types.
-/// It is stateless and has no knowledge of document structure beyond the
-/// single [node] it receives. In Phase 3 the registry is promoted to a
-/// public [BlockRegistry] that plugin authors can extend.
+/// [BlockRenderer] is stateless. It delegates all type resolution to the
+/// singleton [BlockRegistry]. Unknown block types render as [UnknownBlock]
+/// rather than throwing.
 ///
-/// Unknown block types render as [UnknownBlock] rather than throwing, so
-/// documents containing unregistered types degrade visibly without crashing.
+/// The caller is responsible for supplying the correct [number] ordinal for
+/// numbered list items. [BlockRenderer] never derives position from context.
 class BlockRenderer extends StatelessWidget {
   /// Creates a [BlockRenderer] for [node].
   ///
-  /// [onEvent] is forwarded to the rendered block widget and must not be null.
+  /// [onEvent] is forwarded to the rendered block widget.
   ///
-  /// [number] is the visible ordinal for numbered list items. It is ignored
-  /// for all other block types. The caller is responsible for computing the
-  /// correct value — [BlockRenderer] never derives position from context.
+  /// [number] is the visible ordinal for numbered list items. Ignored for
+  /// all other block types. Injected into [node] attributes transiently
+  /// before registry delegation so NumberedListPlugin can read it.
   ///
   /// [selection] is forwarded to the rendered block widget for highlight
-  /// painting. Defaults to [EditorSelection.none].
+  /// painting.
   const BlockRenderer({
     super.key,
     required this.node,
@@ -45,65 +44,12 @@ class BlockRenderer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final delta = node.delta ?? TextDelta.empty();
-    final attrs = node.attributes;
-
-    return switch (node.type) {
-      BlockTypes.paragraph => ParagraphBlock(
-        blockId: node.id,
-        delta: delta,
-        selection: selection,
-        onEvent: onEvent,
-      ),
-      BlockTypes.heading1 => H1Block(
-        blockId: node.id,
-        delta: delta,
-        selection: selection,
-        onEvent: onEvent,
-      ),
-      BlockTypes.heading2 => H2Block(
-        blockId: node.id,
-        delta: delta,
-        selection: selection,
-        onEvent: onEvent,
-      ),
-      BlockTypes.heading3 => H3Block(
-        blockId: node.id,
-        delta: delta,
-        selection: selection,
-        onEvent: onEvent,
-      ),
-      BlockTypes.bulletList => BulletListBlock(
-        blockId: node.id,
-        delta: delta,
-        attributes: attrs,
-        selection: selection,
-        onEvent: onEvent,
-      ),
-      BlockTypes.numberedList => NumberedListBlock(
-        blockId: node.id,
-        delta: delta,
-        attributes: attrs,
-        number: number,
-        selection: selection,
-        onEvent: onEvent,
-      ),
-      BlockTypes.todo => TodoBlock(
-        blockId: node.id,
-        delta: delta,
-        checked: attrs['checked'] as bool? ?? false,
-        selection: selection,
-        onEvent: onEvent,
-      ),
-      BlockTypes.quote => QuoteBlock(
-        blockId: node.id,
-        delta: delta,
-        selection: selection,
-        onEvent: onEvent,
-      ),
-      BlockTypes.divider => DividerBlock(blockId: node.id, onEvent: onEvent),
-      _ => UnknownBlock(blockId: node.id, type: node.type),
-    };
+    final resolvedNode =
+        node.type == BlockTypes.numberedList &&
+            !node.attributes.containsKey('number')
+        ? node.copyWith(attributes: {...node.attributes, 'number': number})
+        : node;
+    return BlockRegistry.instance.build(resolvedNode, selection, onEvent);
   }
 }
 

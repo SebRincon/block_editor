@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+      - develop
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -29,8 +30,8 @@ jobs:
       - name: Activate Melos
         run: dart pub global activate melos
 
-      - name: Bootstrap workspace
-        run: melos bootstrap
+      - name: Get dependencies
+        run: dart pub get
 
       - name: Verify dart format
         run: melos run format
@@ -68,8 +69,8 @@ jobs:
       - name: Activate Melos
         run: dart pub global activate melos
 
-      - name: Bootstrap workspace
-        run: melos bootstrap
+      - name: Get dependencies
+        run: dart pub get
 
       - name: Build example app (Android)
         if: matrix.os == 'ubuntu-latest'
@@ -113,8 +114,50 @@ jobs:
       - name: Activate Melos
         run: dart pub global activate melos
 
-      - name: Bootstrap workspace
-        run: melos bootstrap
+      - name: Get dependencies
+        run: dart pub get
 
       - name: Validate publishability (dry run)
         run: melos run publish:dry-run
+
+  deploy-web-demo:
+    name: Deploy Web Demo to GitHub Pages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Activate Melos
+        run: dart pub global activate melos
+
+      - name: Get dependencies
+        run: dart pub get
+
+      - name: Build web demo
+        working-directory: example
+        run: flutter build web --release --base-href /block_editor/
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: example/build/web
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

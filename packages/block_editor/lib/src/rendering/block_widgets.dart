@@ -27,9 +27,9 @@ int _resolveOffset(GlobalKey key, Offset localPosition) {
 }
 
 /// A paragraph block widget.
-class ParagraphBlock extends StatefulWidget {
-  /// Creates a [ParagraphBlock] for the block identified by [blockId].
-  const ParagraphBlock({
+class ParagraphWidget extends StatefulWidget {
+  /// Creates a [ParagraphWidget] for the block identified by [blockId].
+  const ParagraphWidget({
     super.key,
     required this.blockId,
     required this.delta,
@@ -50,10 +50,10 @@ class ParagraphBlock extends StatefulWidget {
   final EditorSelection selection;
 
   @override
-  State<ParagraphBlock> createState() => _ParagraphBlockState();
+  State<ParagraphWidget> createState() => _ParagraphWidgetState();
 }
 
-class _ParagraphBlockState extends State<ParagraphBlock> {
+class _ParagraphWidgetState extends State<ParagraphWidget> {
   final _textKey = GlobalKey();
 
   @override
@@ -75,9 +75,9 @@ class _ParagraphBlockState extends State<ParagraphBlock> {
 }
 
 /// A heading level 1 block widget.
-class H1Block extends StatefulWidget {
-  /// Creates an [H1Block] for the block identified by [blockId].
-  const H1Block({
+class H1Widget extends StatefulWidget {
+  /// Creates an [H1Widget] for the block identified by [blockId].
+  const H1Widget({
     super.key,
     required this.blockId,
     required this.delta,
@@ -98,10 +98,10 @@ class H1Block extends StatefulWidget {
   final EditorSelection selection;
 
   @override
-  State<H1Block> createState() => _H1BlockState();
+  State<H1Widget> createState() => _H1WidgetState();
 }
 
-class _H1BlockState extends State<H1Block> {
+class _H1WidgetState extends State<H1Widget> {
   final _textKey = GlobalKey();
 
   @override
@@ -123,9 +123,9 @@ class _H1BlockState extends State<H1Block> {
 }
 
 /// A heading level 2 block widget.
-class H2Block extends StatefulWidget {
-  /// Creates an [H2Block] for the block identified by [blockId].
-  const H2Block({
+class H2Widget extends StatefulWidget {
+  /// Creates an [H2Widget] for the block identified by [blockId].
+  const H2Widget({
     super.key,
     required this.blockId,
     required this.delta,
@@ -146,10 +146,10 @@ class H2Block extends StatefulWidget {
   final EditorSelection selection;
 
   @override
-  State<H2Block> createState() => _H2BlockState();
+  State<H2Widget> createState() => _H2WidgetState();
 }
 
-class _H2BlockState extends State<H2Block> {
+class _H2WidgetState extends State<H2Widget> {
   final _textKey = GlobalKey();
 
   @override
@@ -171,9 +171,9 @@ class _H2BlockState extends State<H2Block> {
 }
 
 /// A heading level 3 block widget.
-class H3Block extends StatefulWidget {
-  /// Creates an [H3Block] for the block identified by [blockId].
-  const H3Block({
+class H3Widget extends StatefulWidget {
+  /// Creates an [H3Widget] for the block identified by [blockId].
+  const H3Widget({
     super.key,
     required this.blockId,
     required this.delta,
@@ -194,10 +194,10 @@ class H3Block extends StatefulWidget {
   final EditorSelection selection;
 
   @override
-  State<H3Block> createState() => _H3BlockState();
+  State<H3Widget> createState() => _H3WidgetState();
 }
 
-class _H3BlockState extends State<H3Block> {
+class _H3WidgetState extends State<H3Widget> {
   final _textKey = GlobalKey();
 
   @override
@@ -219,9 +219,9 @@ class _H3BlockState extends State<H3Block> {
 }
 
 /// A bullet list item block widget.
-class BulletListBlock extends StatefulWidget {
-  /// Creates a [BulletListBlock] for the block identified by [blockId].
-  const BulletListBlock({
+class BulletListWidget extends StatefulWidget {
+  /// Creates a [BulletListWidget] for the block identified by [blockId].
+  const BulletListWidget({
     super.key,
     required this.blockId,
     required this.delta,
@@ -246,10 +246,10 @@ class BulletListBlock extends StatefulWidget {
   final EditorSelection selection;
 
   @override
-  State<BulletListBlock> createState() => _BulletListBlockState();
+  State<BulletListWidget> createState() => _BulletListWidgetState();
 }
 
-class _BulletListBlockState extends State<BulletListBlock> {
+class _BulletListWidgetState extends State<BulletListWidget> {
   final _textKey = GlobalKey();
 
   @override
@@ -288,9 +288,9 @@ class _BulletListBlockState extends State<BulletListBlock> {
 }
 
 /// A numbered list item block widget.
-class NumberedListBlock extends StatefulWidget {
-  /// Creates a [NumberedListBlock] for the block identified by [blockId].
-  const NumberedListBlock({
+class NumberedListWidget extends StatefulWidget {
+  /// Creates a [NumberedListWidget] for the block identified by [blockId].
+  const NumberedListWidget({
     super.key,
     required this.blockId,
     required this.delta,
@@ -319,10 +319,10 @@ class NumberedListBlock extends StatefulWidget {
   final EditorSelection selection;
 
   @override
-  State<NumberedListBlock> createState() => _NumberedListBlockState();
+  State<NumberedListWidget> createState() => _NumberedListWidgetState();
 }
 
-class _NumberedListBlockState extends State<NumberedListBlock> {
+class _NumberedListWidgetState extends State<NumberedListWidget> {
   final _textKey = GlobalKey();
 
   @override
@@ -364,9 +364,9 @@ class _NumberedListBlockState extends State<NumberedListBlock> {
 }
 
 /// A todo (checkbox) block widget.
-class TodoBlock extends StatefulWidget {
-  /// Creates a [TodoBlock] for the block identified by [blockId].
-  const TodoBlock({
+class TodoWidget extends StatefulWidget {
+  /// Creates a [TodoWidget] for the block identified by [blockId].
+  const TodoWidget({
     super.key,
     required this.blockId,
     required this.delta,
@@ -391,10 +391,10 @@ class TodoBlock extends StatefulWidget {
   final EditorSelection selection;
 
   @override
-  State<TodoBlock> createState() => _TodoBlockState();
+  State<TodoWidget> createState() => _TodoWidgetState();
 }
 
-class _TodoBlockState extends State<TodoBlock> {
+class _TodoWidgetState extends State<TodoWidget> {
   final _textKey = GlobalKey();
 
   @override
@@ -465,9 +465,9 @@ class _Checkbox extends StatelessWidget {
 }
 
 /// A block quote widget.
-class QuoteBlock extends StatefulWidget {
-  /// Creates a [QuoteBlock] for the block identified by [blockId].
-  const QuoteBlock({
+class QuoteWidget extends StatefulWidget {
+  /// Creates a [QuoteWidget] for the block identified by [blockId].
+  const QuoteWidget({
     super.key,
     required this.blockId,
     required this.delta,
@@ -488,10 +488,10 @@ class QuoteBlock extends StatefulWidget {
   final EditorSelection selection;
 
   @override
-  State<QuoteBlock> createState() => _QuoteBlockState();
+  State<QuoteWidget> createState() => _QuoteWidgetState();
 }
 
-class _QuoteBlockState extends State<QuoteBlock> {
+class _QuoteWidgetState extends State<QuoteWidget> {
   final _textKey = GlobalKey();
 
   @override
@@ -521,9 +521,13 @@ class _QuoteBlockState extends State<QuoteBlock> {
 }
 
 /// A horizontal divider block widget.
-class DividerBlock extends StatelessWidget {
-  /// Creates a [DividerBlock] for the block identified by [blockId].
-  const DividerBlock({super.key, required this.blockId, required this.onEvent});
+class DividerWidget extends StatelessWidget {
+  /// Creates a [DividerWidget] for the block identified by [blockId].
+  const DividerWidget({
+    super.key,
+    required this.blockId,
+    required this.onEvent,
+  });
 
   /// The id of the block this widget represents.
   final String blockId;

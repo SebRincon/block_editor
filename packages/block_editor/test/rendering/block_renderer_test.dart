@@ -17,7 +17,7 @@ BlockNode node(String type, {Map<String, dynamic>? attributes, String? text}) {
 
 void main() {
   group('BlockRenderer — built-in block types', () {
-    testWidgets('paragraph renders ParagraphBlock', (tester) async {
+    testWidgets('paragraph renders ParagraphWidget', (tester) async {
       await tester.pumpWidget(
         wrap(
           BlockRenderer(
@@ -26,10 +26,10 @@ void main() {
           ),
         ),
       );
-      expect(find.byType(ParagraphBlock), findsOneWidget);
+      expect(find.byType(ParagraphWidget), findsOneWidget);
     });
 
-    testWidgets('heading1 renders H1Block', (tester) async {
+    testWidgets('heading1 renders H1Widget', (tester) async {
       await tester.pumpWidget(
         wrap(
           BlockRenderer(
@@ -38,10 +38,10 @@ void main() {
           ),
         ),
       );
-      expect(find.byType(H1Block), findsOneWidget);
+      expect(find.byType(H1Widget), findsOneWidget);
     });
 
-    testWidgets('heading2 renders H2Block', (tester) async {
+    testWidgets('heading2 renders H2Widget', (tester) async {
       await tester.pumpWidget(
         wrap(
           BlockRenderer(
@@ -50,10 +50,10 @@ void main() {
           ),
         ),
       );
-      expect(find.byType(H2Block), findsOneWidget);
+      expect(find.byType(H2Widget), findsOneWidget);
     });
 
-    testWidgets('heading3 renders H3Block', (tester) async {
+    testWidgets('heading3 renders H3Widget', (tester) async {
       await tester.pumpWidget(
         wrap(
           BlockRenderer(
@@ -62,10 +62,10 @@ void main() {
           ),
         ),
       );
-      expect(find.byType(H3Block), findsOneWidget);
+      expect(find.byType(H3Widget), findsOneWidget);
     });
 
-    testWidgets('bulletList renders BulletListBlock', (tester) async {
+    testWidgets('bulletList renders BulletListWidget', (tester) async {
       await tester.pumpWidget(
         wrap(
           BlockRenderer(
@@ -74,10 +74,10 @@ void main() {
           ),
         ),
       );
-      expect(find.byType(BulletListBlock), findsOneWidget);
+      expect(find.byType(BulletListWidget), findsOneWidget);
     });
 
-    testWidgets('numberedList renders NumberedListBlock', (tester) async {
+    testWidgets('numberedList renders NumberedListWidget', (tester) async {
       await tester.pumpWidget(
         wrap(
           SizedBox(
@@ -91,10 +91,10 @@ void main() {
           ),
         ),
       );
-      expect(find.byType(NumberedListBlock), findsOneWidget);
+      expect(find.byType(NumberedListWidget), findsOneWidget);
     });
 
-    testWidgets('todo renders TodoBlock', (tester) async {
+    testWidgets('todo renders TodoWidget', (tester) async {
       await tester.pumpWidget(
         wrap(
           BlockRenderer(
@@ -103,10 +103,10 @@ void main() {
           ),
         ),
       );
-      expect(find.byType(TodoBlock), findsOneWidget);
+      expect(find.byType(TodoWidget), findsOneWidget);
     });
 
-    testWidgets('quote renders QuoteBlock', (tester) async {
+    testWidgets('quote renders QuoteWidget', (tester) async {
       await tester.pumpWidget(
         wrap(
           BlockRenderer(
@@ -115,14 +115,14 @@ void main() {
           ),
         ),
       );
-      expect(find.byType(QuoteBlock), findsOneWidget);
+      expect(find.byType(QuoteWidget), findsOneWidget);
     });
 
-    testWidgets('divider renders DividerBlock', (tester) async {
+    testWidgets('divider renders DividerWidget', (tester) async {
       await tester.pumpWidget(
         wrap(BlockRenderer(node: node(BlockTypes.divider), onEvent: (_) {})),
       );
-      expect(find.byType(DividerBlock), findsOneWidget);
+      expect(find.byType(DividerWidget), findsOneWidget);
     });
   });
 
@@ -148,7 +148,7 @@ void main() {
   });
 
   group('BlockRenderer — number forwarding', () {
-    testWidgets('number is forwarded to NumberedListBlock', (tester) async {
+    testWidgets('number is forwarded to NumberedListWidget', (tester) async {
       await tester.pumpWidget(
         wrap(
           SizedBox(
@@ -162,8 +162,8 @@ void main() {
           ),
         ),
       );
-      final widget = tester.widget<NumberedListBlock>(
-        find.byType(NumberedListBlock),
+      final widget = tester.widget<NumberedListWidget>(
+        find.byType(NumberedListWidget),
       );
       expect(widget.number, 5);
     });
@@ -181,15 +181,15 @@ void main() {
           ),
         ),
       );
-      final widget = tester.widget<NumberedListBlock>(
-        find.byType(NumberedListBlock),
+      final widget = tester.widget<NumberedListWidget>(
+        find.byType(NumberedListWidget),
       );
       expect(widget.number, 1);
     });
   });
 
   group('BlockRenderer — checked attribute', () {
-    testWidgets('checked true is forwarded to TodoBlock', (tester) async {
+    testWidgets('checked true is forwarded to TodoWidget', (tester) async {
       await tester.pumpWidget(
         wrap(
           BlockRenderer(
@@ -202,7 +202,7 @@ void main() {
           ),
         ),
       );
-      final widget = tester.widget<TodoBlock>(find.byType(TodoBlock));
+      final widget = tester.widget<TodoWidget>(find.byType(TodoWidget));
       expect(widget.checked, isTrue);
     });
 
@@ -215,7 +215,7 @@ void main() {
           ),
         ),
       );
-      final widget = tester.widget<TodoBlock>(find.byType(TodoBlock));
+      final widget = tester.widget<TodoWidget>(find.byType(TodoWidget));
       expect(widget.checked, isFalse);
     });
   });

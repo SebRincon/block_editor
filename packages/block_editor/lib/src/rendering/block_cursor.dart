@@ -6,7 +6,7 @@ import 'package:block_editor/block_editor.dart';
 /// A blinking text cursor widget that overlays a [RichTextRenderer].
 ///
 /// [BlockCursor] renders the block's [TextDelta] via [RichTextRenderer] and
-/// paints a blinking caret at [cursorOffset] when [selection] is a
+/// paints a blinking caret at cursorOffset when [selection] is a
 /// [CollapsedSelection] that belongs to [blockId].
 ///
 /// The blink animation is part of the public API. Supply a custom
@@ -19,7 +19,7 @@ import 'package:block_editor/block_editor.dart';
 class BlockCursor extends StatefulWidget {
   /// Creates a [BlockCursor] for the block identified by [blockId].
   ///
-  /// [cursorOffset] is the character offset within [delta] at which the
+  /// cursorOffset is the character offset within [delta] at which the
   /// caret is drawn. A value of -1 suppresses the cursor entirely.
   ///
   /// [blinkDuration] controls the length of one full fade-in-then-fade-out

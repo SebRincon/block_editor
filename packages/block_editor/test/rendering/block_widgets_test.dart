@@ -9,10 +9,12 @@ Widget wrap(Widget child) {
 void main() {
   final helloDelta = TextDelta.fromPlainText('hello');
 
-  group('ParagraphBlock', () {
+  group('ParagraphWidget', () {
     testWidgets('renders without error', (tester) async {
       await tester.pumpWidget(
-        wrap(ParagraphBlock(blockId: 'b1', delta: helloDelta, onEvent: (_) {})),
+        wrap(
+          ParagraphWidget(blockId: 'b1', delta: helloDelta, onEvent: (_) {}),
+        ),
       );
       expect(tester.takeException(), isNull);
     });
@@ -21,23 +23,23 @@ void main() {
       BlockEvent? received;
       await tester.pumpWidget(
         wrap(
-          ParagraphBlock(
+          ParagraphWidget(
             blockId: 'b1',
             delta: helloDelta,
             onEvent: (e) => received = e,
           ),
         ),
       );
-      await tester.tap(find.byType(ParagraphBlock));
+      await tester.tap(find.byType(ParagraphWidget));
       expect(received, isA<TapEvent>());
       expect((received as TapEvent).blockId, 'b1');
     });
   });
 
-  group('H1Block', () {
+  group('H1Widget', () {
     testWidgets('renders without error', (tester) async {
       await tester.pumpWidget(
-        wrap(H1Block(blockId: 'b1', delta: helloDelta, onEvent: (_) {})),
+        wrap(H1Widget(blockId: 'b1', delta: helloDelta, onEvent: (_) {})),
       );
       expect(tester.takeException(), isNull);
     });
@@ -46,22 +48,22 @@ void main() {
       BlockEvent? received;
       await tester.pumpWidget(
         wrap(
-          H1Block(
+          H1Widget(
             blockId: 'b1',
             delta: helloDelta,
             onEvent: (e) => received = e,
           ),
         ),
       );
-      await tester.tap(find.byType(H1Block));
+      await tester.tap(find.byType(H1Widget));
       expect(received, isA<TapEvent>());
     });
   });
 
-  group('H2Block', () {
+  group('H2Widget', () {
     testWidgets('renders without error', (tester) async {
       await tester.pumpWidget(
-        wrap(H2Block(blockId: 'b1', delta: helloDelta, onEvent: (_) {})),
+        wrap(H2Widget(blockId: 'b1', delta: helloDelta, onEvent: (_) {})),
       );
       expect(tester.takeException(), isNull);
     });
@@ -70,22 +72,22 @@ void main() {
       BlockEvent? received;
       await tester.pumpWidget(
         wrap(
-          H2Block(
+          H2Widget(
             blockId: 'b1',
             delta: helloDelta,
             onEvent: (e) => received = e,
           ),
         ),
       );
-      await tester.tap(find.byType(H2Block));
+      await tester.tap(find.byType(H2Widget));
       expect(received, isA<TapEvent>());
     });
   });
 
-  group('H3Block', () {
+  group('H3Widget', () {
     testWidgets('renders without error', (tester) async {
       await tester.pumpWidget(
-        wrap(H3Block(blockId: 'b1', delta: helloDelta, onEvent: (_) {})),
+        wrap(H3Widget(blockId: 'b1', delta: helloDelta, onEvent: (_) {})),
       );
       expect(tester.takeException(), isNull);
     });
@@ -94,23 +96,23 @@ void main() {
       BlockEvent? received;
       await tester.pumpWidget(
         wrap(
-          H3Block(
+          H3Widget(
             blockId: 'b1',
             delta: helloDelta,
             onEvent: (e) => received = e,
           ),
         ),
       );
-      await tester.tap(find.byType(H3Block));
+      await tester.tap(find.byType(H3Widget));
       expect(received, isA<TapEvent>());
     });
   });
 
-  group('BulletListBlock', () {
+  group('BulletListWidget', () {
     testWidgets('renders without error', (tester) async {
       await tester.pumpWidget(
         wrap(
-          BulletListBlock(
+          BulletListWidget(
             blockId: 'b1',
             delta: helloDelta,
             attributes: const {},
@@ -124,7 +126,7 @@ void main() {
     testWidgets('renders bullet marker', (tester) async {
       await tester.pumpWidget(
         wrap(
-          BulletListBlock(
+          BulletListWidget(
             blockId: 'b1',
             delta: helloDelta,
             attributes: const {},
@@ -138,7 +140,7 @@ void main() {
     testWidgets('applies indent padding', (tester) async {
       await tester.pumpWidget(
         wrap(
-          BulletListBlock(
+          BulletListWidget(
             blockId: 'b1',
             delta: helloDelta,
             attributes: const {'indent': 2},
@@ -157,7 +159,7 @@ void main() {
           SizedBox(
             width: 400,
             height: 50,
-            child: BulletListBlock(
+            child: BulletListWidget(
               blockId: 'b1',
               delta: helloDelta,
               attributes: const {},
@@ -171,11 +173,11 @@ void main() {
     });
   });
 
-  group('NumberedListBlock', () {
+  group('NumberedListWidget', () {
     testWidgets('renders without error', (tester) async {
       await tester.pumpWidget(
         wrap(
-          NumberedListBlock(
+          NumberedListWidget(
             blockId: 'b1',
             delta: helloDelta,
             attributes: const {},
@@ -190,7 +192,7 @@ void main() {
     testWidgets('renders number marker', (tester) async {
       await tester.pumpWidget(
         wrap(
-          NumberedListBlock(
+          NumberedListWidget(
             blockId: 'b1',
             delta: helloDelta,
             attributes: const {},
@@ -209,7 +211,7 @@ void main() {
           SizedBox(
             width: 400,
             height: 50,
-            child: NumberedListBlock(
+            child: NumberedListWidget(
               blockId: 'b1',
               delta: helloDelta,
               attributes: const {},
@@ -224,11 +226,11 @@ void main() {
     });
   });
 
-  group('TodoBlock', () {
+  group('TodoWidget', () {
     testWidgets('renders unchecked without error', (tester) async {
       await tester.pumpWidget(
         wrap(
-          TodoBlock(
+          TodoWidget(
             blockId: 'b1',
             delta: helloDelta,
             checked: false,
@@ -242,7 +244,7 @@ void main() {
     testWidgets('renders checked without error', (tester) async {
       await tester.pumpWidget(
         wrap(
-          TodoBlock(
+          TodoWidget(
             blockId: 'b1',
             delta: helloDelta,
             checked: true,
@@ -259,7 +261,7 @@ void main() {
       BlockEvent? received;
       await tester.pumpWidget(
         wrap(
-          TodoBlock(
+          TodoWidget(
             blockId: 'b1',
             delta: helloDelta,
             checked: false,
@@ -278,7 +280,7 @@ void main() {
       BlockEvent? received;
       await tester.pumpWidget(
         wrap(
-          TodoBlock(
+          TodoWidget(
             blockId: 'b1',
             delta: helloDelta,
             checked: true,
@@ -294,7 +296,7 @@ void main() {
       BlockEvent? received;
       await tester.pumpWidget(
         wrap(
-          TodoBlock(
+          TodoWidget(
             blockId: 'b1',
             delta: helloDelta,
             checked: false,
@@ -309,7 +311,7 @@ void main() {
     testWidgets('checked state renders strikethrough on text', (tester) async {
       await tester.pumpWidget(
         wrap(
-          TodoBlock(
+          TodoWidget(
             blockId: 'b1',
             delta: helloDelta,
             checked: true,
@@ -322,10 +324,10 @@ void main() {
     });
   });
 
-  group('QuoteBlock', () {
+  group('QuoteWidget', () {
     testWidgets('renders without error', (tester) async {
       await tester.pumpWidget(
-        wrap(QuoteBlock(blockId: 'b1', delta: helloDelta, onEvent: (_) {})),
+        wrap(QuoteWidget(blockId: 'b1', delta: helloDelta, onEvent: (_) {})),
       );
       expect(tester.takeException(), isNull);
     });
@@ -334,29 +336,29 @@ void main() {
       BlockEvent? received;
       await tester.pumpWidget(
         wrap(
-          QuoteBlock(
+          QuoteWidget(
             blockId: 'b1',
             delta: helloDelta,
             onEvent: (e) => received = e,
           ),
         ),
       );
-      await tester.tap(find.byType(QuoteBlock));
+      await tester.tap(find.byType(QuoteWidget));
       expect(received, isA<TapEvent>());
     });
   });
 
-  group('DividerBlock', () {
+  group('DividerWidget', () {
     testWidgets('renders without error', (tester) async {
       await tester.pumpWidget(
-        wrap(DividerBlock(blockId: 'b1', onEvent: (_) {})),
+        wrap(DividerWidget(blockId: 'b1', onEvent: (_) {})),
       );
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('renders a Divider widget', (tester) async {
       await tester.pumpWidget(
-        wrap(DividerBlock(blockId: 'b1', onEvent: (_) {})),
+        wrap(DividerWidget(blockId: 'b1', onEvent: (_) {})),
       );
       expect(find.byType(Divider), findsOneWidget);
     });

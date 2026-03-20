@@ -26,6 +26,15 @@ class RichTextRenderer extends StatelessWidget {
   ///
   /// [inlineCodeColor] is the background color applied to inline code runs.
   /// Defaults to a light grey.
+  ///
+  /// [composingRange] is the active IME composing region. When non-null, the
+  /// characters within this range receive an underline decoration at render
+  /// time. The range is transient — it is never stored in the document and
+  /// never affects serialization.
+  ///
+  /// Variable resolution for [VariableOp] embeds is read automatically from
+  /// the nearest [BlockEditorScope] ancestor via context. No parameter is
+  /// needed on this widget.
   const RichTextRenderer({
     super.key,
     required this.delta,
@@ -35,6 +44,7 @@ class RichTextRenderer extends StatelessWidget {
     this.selectionColor = const Color(0x443399FF),
     this.inlineCodeColor = const Color(0xFFEEEEEE),
     this.textAlign = TextAlign.start,
+    this.composingRange,
   });
 
   /// The content to render.
@@ -58,9 +68,17 @@ class RichTextRenderer extends StatelessWidget {
   /// How the text should be aligned horizontally.
   final TextAlign textAlign;
 
+  /// The active IME composing region, or null when no composition is active.
+  ///
+  /// When non-null, characters in this range receive a composing underline
+  /// that is separate from any [InlineAttributes] formatting. The document
+  /// is never modified by this parameter.
+  final TextRange? composingRange;
+
   @override
   Widget build(BuildContext context) {
-    final spans = _buildSpans();
+    final variables = BlockEditorScope.maybeOf(context)?.variables ?? const {};
+    final spans = _buildSpans(variables);
     return Text.rich(
       TextSpan(style: baseStyle, children: spans),
       textAlign: textAlign,
@@ -68,20 +86,134 @@ class RichTextRenderer extends StatelessWidget {
     );
   }
 
-  List<TextSpan> _buildSpans() {
+  List<TextSpan> _buildSpans(Map<String, String> variables) {
     final spans = <TextSpan>[];
     var offset = 0;
 
     for (final op in delta.ops) {
-      if (op is! TextOp) {
+      if (op is VariableOp) {
+        final resolved = variables[op.variableName] ?? '{{${op.variableName}}}';
+        spans.add(
+          TextSpan(
+            text: resolved,
+            style: const TextStyle(color: Color(0xFF8B5CF6)),
+          ),
+        );
+        offset += resolved.length;
         continue;
       }
+
+      if (op is TagOp) {
+        spans.add(
+          TextSpan(
+            text: '#${op.tag}',
+            style: const TextStyle(color: Color(0xFF0EA5E9)),
+          ),
+        );
+        offset += op.tag.length + 1;
+        continue;
+      }
+
+      if (op is! TextOp) {
+        offset++;
+        continue;
+      }
+
       final length = op.text.length;
-      spans.add(_buildSpan(op, offset, offset + length));
-      offset += length;
+      final opStart = offset;
+      final opEnd = offset + length;
+
+      if (composingRange != null &&
+          _overlaps(opStart, opEnd, composingRange!)) {
+        spans.addAll(_buildSpansWithComposing(op, opStart, opEnd));
+      } else {
+        spans.add(_buildSpan(op, opStart, opEnd));
+      }
+
+      offset = opEnd;
     }
 
     return spans;
+  }
+
+  bool _overlaps(int opStart, int opEnd, TextRange range) {
+    return opStart < range.end && opEnd > range.start;
+  }
+
+  List<TextSpan> _buildSpansWithComposing(TextOp op, int opStart, int opEnd) {
+    final range = composingRange!;
+    final compStart = range.start.clamp(opStart, opEnd);
+    final compEnd = range.end.clamp(opStart, opEnd);
+    final result = <TextSpan>[];
+
+    if (compStart > opStart) {
+      final beforeText = op.text.substring(0, compStart - opStart);
+      result.add(
+        _buildSpan(
+          TextOp(beforeText, attributes: op.attributes),
+          opStart,
+          compStart,
+        ),
+      );
+    }
+
+    if (compEnd > compStart) {
+      final composingText = op.text.substring(
+        compStart - opStart,
+        compEnd - opStart,
+      );
+      result.add(
+        _buildSpanWithComposingUnderline(
+          TextOp(composingText, attributes: op.attributes),
+          compStart,
+          compEnd,
+        ),
+      );
+    }
+
+    if (compEnd < opEnd) {
+      final afterText = op.text.substring(compEnd - opStart);
+      result.add(
+        _buildSpan(
+          TextOp(afterText, attributes: op.attributes),
+          compEnd,
+          opEnd,
+        ),
+      );
+    }
+
+    return result;
+  }
+
+  TextSpan _buildSpanWithComposingUnderline(TextOp op, int start, int end) {
+    final attrs = op.attributes;
+    final isCode = attrs.inlineCode ?? false;
+    final isLink = attrs.link != null;
+
+    final existingDecorations = <TextDecoration>[];
+    if (attrs.underline ?? false) {
+      existingDecorations.add(TextDecoration.underline);
+    }
+    if (attrs.strikethrough ?? false) {
+      existingDecorations.add(TextDecoration.lineThrough);
+    }
+    existingDecorations.add(TextDecoration.underline);
+
+    var style = TextStyle(
+      fontWeight: (attrs.bold ?? false) ? FontWeight.bold : null,
+      fontStyle: (attrs.italic ?? false) ? FontStyle.italic : null,
+      decoration: TextDecoration.combine(existingDecorations),
+      fontFamily: isCode ? 'monospace' : null,
+      backgroundColor: isCode ? inlineCodeColor : null,
+      color: _resolveColor(attrs, isLink),
+    );
+
+    final highlight = _selectionHighlight(start, end);
+    if (highlight != null) {
+      style = style.copyWith(backgroundColor: highlight);
+    }
+
+    return TextSpan(text: op.text, style: style);
   }
 
   TextSpan _buildSpan(TextOp op, int start, int end) {

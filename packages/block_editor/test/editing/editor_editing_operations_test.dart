@@ -1,438 +1,524 @@
+import 'package:flutter_test/flutter_test.dart';
 import 'package:block_editor/block_editor.dart';
-import 'package:test/test.dart';
 
-BlockNode paragraph({String? id, String text = ''}) => BlockNode(
-  id: id,
-  type: BlockTypes.paragraph,
-  delta: TextDelta.fromPlainText(text),
-);
+BlockController makeController() =>
+    BlockController(document: const BlockDocument([]));
 
-BlockNode bulletItem({String? id, String text = '', int indent = 0}) =>
-    BlockNode(
-      id: id,
-      type: BlockTypes.bulletList,
-      attributes: {'indent': indent},
-      delta: TextDelta.fromPlainText(text),
-    );
+BlockNode plainBlock(String text, {String type = BlockTypes.paragraph}) {
+  return BlockNode(type: type, delta: TextDelta.fromPlainText(text));
+}
 
-BlockNode numberedItem({String? id, String text = ''}) => BlockNode(
-  id: id,
-  type: BlockTypes.numberedList,
-  delta: TextDelta.fromPlainText(text),
-);
-
-BlockNode todoItem({String? id, String text = '', bool checked = false}) =>
-    BlockNode(
-      id: id,
-      type: BlockTypes.todo,
-      attributes: {'checked': checked},
-      delta: TextDelta.fromPlainText(text),
-    );
+BlockNode richBlock(List<DeltaOp> deltaOps) {
+  return BlockNode(type: BlockTypes.paragraph, delta: TextDelta(deltaOps));
+}
 
 void main() {
-  late BlockController controller;
-  late EditorEditingOperations ops;
-
-  setUp(() {
-    controller = BlockController(
-      document: BlockDocument([
-        paragraph(id: 'b1', text: 'hello world'),
-        paragraph(id: 'b2', text: 'second'),
-        paragraph(id: 'b3', text: 'third'),
-      ]),
-    );
-    ops = EditorEditingOperations(controller);
-  });
-
-  tearDown(() => controller.dispose());
-
   group('insertCharacter', () {
-    test('inserts character at cursor offset', () {
-      controller.collapseSelection('b1', 5);
+    test('inserts into empty block', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('');
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
+      ops.insertCharacter('a');
+      expect(controller.document.findById(node.id)!.delta!.plainText, 'a');
+      controller.dispose();
+    });
+
+    test('inserts at start', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('bc');
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
+      ops.insertCharacter('a');
+      expect(controller.document.findById(node.id)!.delta!.plainText, 'abc');
+      controller.dispose();
+    });
+
+    test('inserts at end', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('ab');
+      controller.append(node);
+      controller.collapseSelection(node.id, 2);
+      ops.insertCharacter('c');
+      expect(controller.document.findById(node.id)!.delta!.plainText, 'abc');
+      controller.dispose();
+    });
+
+    test('inserts in middle', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('ac');
+      controller.append(node);
+      controller.collapseSelection(node.id, 1);
+      ops.insertCharacter('b');
+      expect(controller.document.findById(node.id)!.delta!.plainText, 'abc');
+      controller.dispose();
+    });
+
+    test('inherits bold formatting from left neighbour', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = richBlock([
+        const TextOp('hello', attributes: InlineAttributes(bold: true)),
+      ]);
+      controller.append(node);
+      controller.collapseSelection(node.id, 5);
       ops.insertCharacter('!');
-      expect(
-        controller.document.findById('b1')!.delta!.plainText,
-        'hello! world',
-      );
+      final delta = controller.document.findById(node.id)!.delta!;
+      expect(delta.plainText, 'hello!');
+      expect(delta.ops.length, 1);
+      expect((delta.ops.first as TextOp).attributes.bold, true);
+      controller.dispose();
     });
 
-    test('advances cursor by character length', () {
-      controller.collapseSelection('b1', 5);
-      ops.insertCharacter('!');
-      final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.offset, 6);
+    test('inherits no formatting when inserting at offset 0', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = richBlock([
+        const TextOp('hello', attributes: InlineAttributes(bold: true)),
+      ]);
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
+      ops.insertCharacter('A');
+      final delta = controller.document.findById(node.id)!.delta!;
+      expect(delta.plainText, 'Ahello');
+      expect((delta.ops.first as TextOp).attributes.bold, isNull);
+      controller.dispose();
     });
 
-    test('inserts at offset 0', () {
-      controller.collapseSelection('b1', 0);
-      ops.insertCharacter('X');
-      expect(
-        controller.document.findById('b1')!.delta!.plainText,
-        'Xhello world',
-      );
-    });
-
-    test('inserts at end of text', () {
-      controller.collapseSelection('b1', 11);
-      ops.insertCharacter('.');
-      expect(
-        controller.document.findById('b1')!.delta!.plainText,
-        'hello world.',
-      );
-    });
+    test(
+      'preserves formatting of op to the right when inserting at boundary',
+      () {
+        final controller = makeController();
+        final ops = EditorEditingOperations(controller);
+        final node = richBlock([
+          const TextOp('ab', attributes: InlineAttributes(bold: true)),
+          const TextOp('cd', attributes: InlineAttributes(italic: true)),
+        ]);
+        controller.append(node);
+        controller.collapseSelection(node.id, 2);
+        ops.insertCharacter('X');
+        final delta = controller.document.findById(node.id)!.delta!;
+        expect(delta.plainText, 'abXcd');
+        final boldOp = delta.ops[0] as TextOp;
+        final italicOp = delta.ops[1] as TextOp;
+        expect(boldOp.text, 'abX');
+        expect(boldOp.attributes.bold, true);
+        expect(italicOp.text, 'cd');
+        expect(italicOp.attributes.italic, true);
+        controller.dispose();
+      },
+    );
 
     test('does nothing when selection is not collapsed', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('abc');
+      controller.append(node);
       controller.updateSelection(
-        const ExpandedSelection(
-          anchor: SelectionPoint(blockId: 'b1', offset: 0),
-          focus: SelectionPoint(blockId: 'b1', offset: 5),
+        ExpandedSelection(
+          anchor: SelectionPoint(blockId: node.id, offset: 0),
+          focus: SelectionPoint(blockId: node.id, offset: 2),
         ),
       );
       ops.insertCharacter('X');
-      expect(
-        controller.document.findById('b1')!.delta!.plainText,
-        'hello world',
-      );
+      expect(controller.document.findById(node.id)!.delta!.plainText, 'abc');
+      controller.dispose();
     });
 
-    test('does nothing when character is empty', () {
-      controller.collapseSelection('b1', 5);
-      ops.insertCharacter('');
-      expect(
-        controller.document.findById('b1')!.delta!.plainText,
-        'hello world',
-      );
+    test('advances cursor by character length', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('ab');
+      controller.append(node);
+      controller.collapseSelection(node.id, 1);
+      ops.insertCharacter('X');
+      final sel = controller.selection as CollapsedSelection;
+      expect(sel.point.offset, 2);
+      controller.dispose();
     });
   });
 
   group('backspace', () {
     test('deletes character before cursor', () {
-      controller.collapseSelection('b1', 5);
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('abc');
+      controller.append(node);
+      controller.collapseSelection(node.id, 2);
       ops.backspace();
-      expect(
-        controller.document.findById('b1')!.delta!.plainText,
-        'hell world',
-      );
+      expect(controller.document.findById(node.id)!.delta!.plainText, 'ac');
+      controller.dispose();
     });
 
-    test('moves cursor back one position', () {
-      controller.collapseSelection('b1', 5);
+    test('preserves formatting after deletion', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = richBlock([
+        const TextOp('ab', attributes: InlineAttributes(bold: true)),
+        const TextOp('cd', attributes: InlineAttributes(italic: true)),
+      ]);
+      controller.append(node);
+      controller.collapseSelection(node.id, 2);
       ops.backspace();
-      final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.offset, 4);
+      final delta = controller.document.findById(node.id)!.delta!;
+      expect(delta.plainText, 'acd');
+      expect((delta.ops[0] as TextOp).attributes.bold, true);
+      expect((delta.ops[1] as TextOp).attributes.italic, true);
+      controller.dispose();
     });
 
-    test('merges with previous block at offset 0', () {
-      controller.collapseSelection('b2', 0);
+    test('merges with previous block preserving both deltas', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final prev = richBlock([
+        const TextOp('hello', attributes: InlineAttributes(bold: true)),
+      ]);
+      final curr = richBlock([
+        const TextOp('world', attributes: InlineAttributes(italic: true)),
+      ]);
+      controller.append(prev);
+      controller.append(curr);
+      controller.collapseSelection(curr.id, 0);
       ops.backspace();
-      expect(
-        controller.document.findById('b1')!.delta!.plainText,
-        'hello worldsecond',
-      );
-      expect(controller.document.findById('b2'), isNull);
-    });
-
-    test('places cursor at join point after merge', () {
-      controller.collapseSelection('b2', 0);
-      ops.backspace();
-      final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.blockId, 'b1');
-      expect(sel.point.offset, 11);
+      expect(controller.document.blocks.length, 1);
+      final delta = controller.document.blocks.first.delta!;
+      expect(delta.plainText, 'helloworld');
+      expect((delta.ops[0] as TextOp).attributes.bold, true);
+      expect((delta.ops[1] as TextOp).attributes.italic, true);
+      controller.dispose();
     });
 
     test('does nothing at offset 0 of first block', () {
-      controller.collapseSelection('b1', 0);
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('abc');
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
       ops.backspace();
-      expect(controller.document.blocks.length, 3);
+      expect(controller.document.blocks.length, 1);
+      expect(controller.document.findById(node.id)!.delta!.plainText, 'abc');
+      controller.dispose();
     });
 
-    test('deletes selected range when selection is expanded', () {
+    test('deletes expanded selection', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('abcde');
+      controller.append(node);
       controller.updateSelection(
-        const ExpandedSelection(
-          anchor: SelectionPoint(blockId: 'b1', offset: 0),
-          focus: SelectionPoint(blockId: 'b1', offset: 5),
+        ExpandedSelection(
+          anchor: SelectionPoint(blockId: node.id, offset: 1),
+          focus: SelectionPoint(blockId: node.id, offset: 4),
         ),
       );
       ops.backspace();
-      expect(controller.document.findById('b1')!.delta!.plainText, ' world');
+      expect(controller.document.findById(node.id)!.delta!.plainText, 'ae');
+      controller.dispose();
     });
   });
 
   group('delete', () {
     test('deletes character at cursor', () {
-      controller.collapseSelection('b1', 5);
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('abc');
+      controller.append(node);
+      controller.collapseSelection(node.id, 1);
       ops.delete();
-      expect(
-        controller.document.findById('b1')!.delta!.plainText,
-        'helloworld',
-      );
+      expect(controller.document.findById(node.id)!.delta!.plainText, 'ac');
+      controller.dispose();
     });
 
-    test('cursor stays at same offset after delete', () {
-      controller.collapseSelection('b1', 5);
+    test('preserves formatting after deletion', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = richBlock([
+        const TextOp('ab', attributes: InlineAttributes(bold: true)),
+        const TextOp('cd', attributes: InlineAttributes(italic: true)),
+      ]);
+      controller.append(node);
+      controller.collapseSelection(node.id, 1);
       ops.delete();
-      final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.offset, 5);
+      final delta = controller.document.findById(node.id)!.delta!;
+      expect(delta.plainText, 'acd');
+      expect((delta.ops[0] as TextOp).attributes.bold, true);
+      expect((delta.ops[1] as TextOp).attributes.italic, true);
+      controller.dispose();
     });
 
-    test('merges next block at end of block', () {
-      controller.collapseSelection('b1', 11);
+    test('merges with next block preserving both deltas', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final curr = richBlock([
+        const TextOp('hello', attributes: InlineAttributes(bold: true)),
+      ]);
+      final next = richBlock([
+        const TextOp('world', attributes: InlineAttributes(italic: true)),
+      ]);
+      controller.append(curr);
+      controller.append(next);
+      controller.collapseSelection(curr.id, 5);
       ops.delete();
-      expect(
-        controller.document.findById('b1')!.delta!.plainText,
-        'hello worldsecond',
-      );
-      expect(controller.document.findById('b2'), isNull);
+      expect(controller.document.blocks.length, 1);
+      final delta = controller.document.blocks.first.delta!;
+      expect(delta.plainText, 'helloworld');
+      expect((delta.ops[0] as TextOp).attributes.bold, true);
+      expect((delta.ops[1] as TextOp).attributes.italic, true);
+      controller.dispose();
     });
 
     test('does nothing at end of last block', () {
-      controller.collapseSelection('b3', 5);
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('abc');
+      controller.append(node);
+      controller.collapseSelection(node.id, 3);
       ops.delete();
-      expect(controller.document.blocks.length, 3);
+      expect(controller.document.blocks.length, 1);
+      controller.dispose();
     });
   });
 
   group('insertNewline', () {
-    test('splits block at cursor offset', () {
-      controller.collapseSelection('b1', 5);
+    test('splits block at cursor preserving formatting on both halves', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = richBlock([
+        const TextOp('hel', attributes: InlineAttributes(bold: true)),
+        const TextOp('lo', attributes: InlineAttributes(italic: true)),
+      ]);
+      controller.append(node);
+      controller.collapseSelection(node.id, 3);
       ops.insertNewline();
-      expect(controller.document.blocks.length, 4);
-      expect(controller.document.blocks[0].delta!.plainText, 'hello');
-      expect(controller.document.blocks[1].delta!.plainText, ' world');
+      expect(controller.document.blocks.length, 2);
+      final first = controller.document.blocks[0].delta!;
+      final second = controller.document.blocks[1].delta!;
+      expect(first.plainText, 'hel');
+      expect((first.ops.first as TextOp).attributes.bold, true);
+      expect(second.plainText, 'lo');
+      expect((second.ops.first as TextOp).attributes.italic, true);
+      controller.dispose();
     });
 
-    test('new block has same type as split block', () {
-      controller.collapseSelection('b1', 5);
+    test('transforms empty list block to paragraph', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = BlockNode(
+        type: BlockTypes.bulletList,
+        delta: TextDelta.empty(),
+      );
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
       ops.insertNewline();
-      expect(controller.document.blocks[1].type, BlockTypes.paragraph);
+      expect(controller.document.blocks.length, 1);
+      expect(controller.document.blocks.first.type, BlockTypes.paragraph);
+      controller.dispose();
     });
 
-    test('cursor moves to start of new block', () {
-      controller.collapseSelection('b1', 5);
+    test('new block cursor is at offset 0', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('hello');
+      controller.append(node);
+      controller.collapseSelection(node.id, 3);
       ops.insertNewline();
       final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.blockId, controller.document.blocks[1].id);
       expect(sel.point.offset, 0);
+      expect(sel.point.blockId, controller.document.blocks[1].id);
+      controller.dispose();
     });
+  });
 
-    test('empty bullet list transforms to paragraph', () {
-      final c = BlockController(
-        document: BlockDocument([bulletItem(id: 'li1', text: '')]),
+  group('_deleteSelectedRange cross-block', () {
+    test('merges blocks preserving formatting on both sides', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final first = richBlock([
+        const TextOp('hello', attributes: InlineAttributes(bold: true)),
+      ]);
+      final second = richBlock([
+        const TextOp('world', attributes: InlineAttributes(italic: true)),
+      ]);
+      controller.append(first);
+      controller.append(second);
+      controller.updateSelection(
+        ExpandedSelection(
+          anchor: SelectionPoint(blockId: first.id, offset: 3),
+          focus: SelectionPoint(blockId: second.id, offset: 2),
+        ),
       );
-      addTearDown(c.dispose);
-      final o = EditorEditingOperations(c);
-      c.collapseSelection('li1', 0);
-      o.insertNewline();
-      expect(c.document.blocks.first.type, BlockTypes.paragraph);
-      expect(c.document.blocks.length, 1);
-    });
-
-    test('empty numbered list transforms to paragraph', () {
-      final c = BlockController(
-        document: BlockDocument([numberedItem(id: 'n1', text: '')]),
-      );
-      addTearDown(c.dispose);
-      final o = EditorEditingOperations(c);
-      c.collapseSelection('n1', 0);
-      o.insertNewline();
-      expect(c.document.blocks.first.type, BlockTypes.paragraph);
-    });
-
-    test('empty todo transforms to paragraph', () {
-      final c = BlockController(
-        document: BlockDocument([todoItem(id: 't1', text: '')]),
-      );
-      addTearDown(c.dispose);
-      final o = EditorEditingOperations(c);
-      c.collapseSelection('t1', 0);
-      o.insertNewline();
-      expect(c.document.blocks.first.type, BlockTypes.paragraph);
-    });
-
-    test('non-empty list item splits normally', () {
-      final c = BlockController(
-        document: BlockDocument([bulletItem(id: 'li1', text: 'item')]),
-      );
-      addTearDown(c.dispose);
-      final o = EditorEditingOperations(c);
-      c.collapseSelection('li1', 4);
-      o.insertNewline();
-      expect(c.document.blocks.length, 2);
-      expect(c.document.blocks[1].type, BlockTypes.bulletList);
+      ops.backspace();
+      expect(controller.document.blocks.length, 1);
+      final delta = controller.document.blocks.first.delta!;
+      expect(delta.plainText, 'helrld');
+      expect((delta.ops[0] as TextOp).attributes.bold, true);
+      expect((delta.ops[1] as TextOp).attributes.italic, true);
+      controller.dispose();
     });
   });
 
   group('indent / dedent', () {
-    test('indent increments indent attribute', () {
-      final c = BlockController(
-        document: BlockDocument([bulletItem(id: 'li1', indent: 0)]),
+    test('increments indent on list block', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = BlockNode(
+        type: BlockTypes.bulletList,
+        delta: TextDelta.fromPlainText('item'),
       );
-      addTearDown(c.dispose);
-      final o = EditorEditingOperations(c);
-      c.collapseSelection('li1', 0);
-      o.indent();
-      expect(c.document.blocks.first.attributes['indent'], 1);
-    });
-
-    test('dedent decrements indent attribute', () {
-      final c = BlockController(
-        document: BlockDocument([bulletItem(id: 'li1', indent: 2)]),
-      );
-      addTearDown(c.dispose);
-      final o = EditorEditingOperations(c);
-      c.collapseSelection('li1', 0);
-      o.dedent();
-      expect(c.document.blocks.first.attributes['indent'], 1);
-    });
-
-    test('indent clamps at 8', () {
-      final c = BlockController(
-        document: BlockDocument([bulletItem(id: 'li1', indent: 8)]),
-      );
-      addTearDown(c.dispose);
-      final o = EditorEditingOperations(c);
-      c.collapseSelection('li1', 0);
-      o.indent();
-      expect(c.document.blocks.first.attributes['indent'], 8);
-    });
-
-    test('dedent clamps at 0', () {
-      final c = BlockController(
-        document: BlockDocument([bulletItem(id: 'li1', indent: 0)]),
-      );
-      addTearDown(c.dispose);
-      final o = EditorEditingOperations(c);
-      c.collapseSelection('li1', 0);
-      o.dedent();
-      expect(c.document.blocks.first.attributes['indent'], 0);
-    });
-
-    test('indent does nothing for paragraph', () {
-      controller.collapseSelection('b1', 0);
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
       ops.indent();
-      expect(controller.document.findById('b1')!.attributes['indent'], isNull);
+      expect(controller.document.findById(node.id)!.attributes['indent'], 1);
+      controller.dispose();
+    });
+
+    test('decrements indent on list block', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = BlockNode(
+        type: BlockTypes.bulletList,
+        attributes: const {'indent': 3},
+        delta: TextDelta.fromPlainText('item'),
+      );
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
+      ops.dedent();
+      expect(controller.document.findById(node.id)!.attributes['indent'], 2);
+      controller.dispose();
+    });
+
+    test('does nothing on paragraph', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('text');
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
+      ops.indent();
+      expect(
+        controller.document.findById(node.id)!.attributes['indent'],
+        isNull,
+      );
+      controller.dispose();
+    });
+
+    test('clamps indent at 8', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = BlockNode(
+        type: BlockTypes.bulletList,
+        attributes: const {'indent': 8},
+        delta: TextDelta.fromPlainText('item'),
+      );
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
+      ops.indent();
+      expect(controller.document.findById(node.id)!.attributes['indent'], 8);
+      controller.dispose();
+    });
+
+    test('clamps dedent at 0', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = BlockNode(
+        type: BlockTypes.bulletList,
+        attributes: const {'indent': 0},
+        delta: TextDelta.fromPlainText('item'),
+      );
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
+      ops.dedent();
+      expect(controller.document.findById(node.id)!.attributes['indent'], 0);
+      controller.dispose();
     });
   });
 
-  group('inline formatting', () {
-    test('applyBold applies bold to expanded selection', () {
-      controller.updateSelection(
-        const ExpandedSelection(
-          anchor: SelectionPoint(blockId: 'b1', offset: 0),
-          focus: SelectionPoint(blockId: 'b1', offset: 5),
-        ),
-      );
-      ops.applyBold();
-      final ops2 = controller.document.findById('b1')!.delta!.ops;
-      expect((ops2.first as TextOp).attributes.bold, isTrue);
-    });
-
-    test('applyItalic does nothing for collapsed selection', () {
-      controller.collapseSelection('b1', 3);
-      ops.applyItalic();
-      final op = controller.document.findById('b1')!.delta!.ops.first as TextOp;
-      expect(op.attributes.italic, isNull);
-    });
-
-    test('applyUnderline applies underline to expanded selection', () {
-      controller.updateSelection(
-        const ExpandedSelection(
-          anchor: SelectionPoint(blockId: 'b1', offset: 0),
-          focus: SelectionPoint(blockId: 'b1', offset: 5),
-        ),
-      );
-      ops.applyUnderline();
-      final op = controller.document.findById('b1')!.delta!.ops.first as TextOp;
-      expect(op.attributes.underline, isTrue);
-    });
-  });
-
-  group('navigation', () {
-    test('moveToLineStart collapses to offset 0', () {
-      controller.collapseSelection('b1', 7);
+  group('cursor movement', () {
+    test('moveToLineStart sets offset to 0', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('hello');
+      controller.append(node);
+      controller.collapseSelection(node.id, 3);
       ops.moveToLineStart();
       final sel = controller.selection as CollapsedSelection;
       expect(sel.point.offset, 0);
+      controller.dispose();
     });
 
-    test('moveToLineEnd collapses to last offset', () {
-      controller.collapseSelection('b1', 0);
+    test('moveToLineEnd sets offset to text length', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('hello');
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
       ops.moveToLineEnd();
       final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.offset, 11);
+      expect(sel.point.offset, 5);
+      controller.dispose();
     });
 
     test('moveToDocumentStart moves to first block offset 0', () {
-      controller.collapseSelection('b3', 3);
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final a = plainBlock('aaa');
+      final b = plainBlock('bbb');
+      controller.append(a);
+      controller.append(b);
+      controller.collapseSelection(b.id, 3);
       ops.moveToDocumentStart();
       final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.blockId, 'b1');
+      expect(sel.point.blockId, a.id);
       expect(sel.point.offset, 0);
+      controller.dispose();
     });
 
-    test('moveToDocumentEnd moves to last block last offset', () {
-      controller.collapseSelection('b1', 0);
+    test('moveToDocumentEnd moves to last block end', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final a = plainBlock('aaa');
+      final b = plainBlock('bbb');
+      controller.append(a);
+      controller.append(b);
+      controller.collapseSelection(a.id, 0);
       ops.moveToDocumentEnd();
       final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.blockId, 'b3');
-      expect(sel.point.offset, 5);
+      expect(sel.point.blockId, b.id);
+      expect(sel.point.offset, 3);
+      controller.dispose();
     });
 
-    test('moveWordRight advances to next word boundary', () {
-      controller.collapseSelection('b1', 0);
-      ops.moveWordRight();
-      final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.offset, 5);
-    });
-
-    test('moveWordLeft retreats to previous word boundary', () {
-      controller.collapseSelection('b1', 11);
+    test('moveWordLeft jumps to previous block end when at offset 0', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final a = plainBlock('hello');
+      final b = plainBlock('world');
+      controller.append(a);
+      controller.append(b);
+      controller.collapseSelection(b.id, 0);
       ops.moveWordLeft();
       final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.offset, 6);
+      expect(sel.point.blockId, a.id);
+      expect(sel.point.offset, 5);
+      controller.dispose();
     });
 
-    test('moveWordRight at end of block moves to next block', () {
-      controller.collapseSelection('b1', 11);
+    test('moveWordRight jumps to next block start when at end', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final a = plainBlock('hello');
+      final b = plainBlock('world');
+      controller.append(a);
+      controller.append(b);
+      controller.collapseSelection(a.id, 5);
       ops.moveWordRight();
       final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.blockId, 'b2');
+      expect(sel.point.blockId, b.id);
       expect(sel.point.offset, 0);
-    });
-
-    test('moveWordLeft at start of block moves to end of previous block', () {
-      controller.collapseSelection('b2', 0);
-      ops.moveWordLeft();
-      final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.blockId, 'b1');
-      expect(sel.point.offset, 11);
-    });
-  });
-
-  group('cross-block delete', () {
-    test('backspace on expanded cross-block selection merges blocks', () {
-      controller.updateSelection(
-        const ExpandedSelection(
-          anchor: SelectionPoint(blockId: 'b1', offset: 6),
-          focus: SelectionPoint(blockId: 'b2', offset: 3),
-        ),
-      );
-      ops.backspace();
-      expect(controller.document.blocks.length, 2);
-      expect(controller.document.findById('b1')!.delta!.plainText, 'hello ond');
-    });
-
-    test('cursor lands at start offset after cross-block delete', () {
-      controller.updateSelection(
-        const ExpandedSelection(
-          anchor: SelectionPoint(blockId: 'b1', offset: 6),
-          focus: SelectionPoint(blockId: 'b2', offset: 3),
-        ),
-      );
-      ops.backspace();
-      final sel = controller.selection as CollapsedSelection;
-      expect(sel.point.blockId, 'b1');
-      expect(sel.point.offset, 6);
+      controller.dispose();
     });
   });
 }

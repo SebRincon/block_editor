@@ -89,7 +89,7 @@ class _BlockDragHandleState extends State<BlockDragHandle> {
 /// Wraps a block row with a [DragTarget] that accepts dropped block indices.
 ///
 /// When a dragged block is dropped onto this target, a [BlockReorderedEvent]
-/// is emitted with the resolved block id and the computed [newIndex].
+/// is emitted with the resolved block id and the computed newIndex.
 class BlockDropTarget extends StatefulWidget {
   /// Creates a [BlockDropTarget] for the block at [index].
   const BlockDropTarget({

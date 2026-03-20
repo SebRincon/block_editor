@@ -7,6 +7,9 @@ import 'package:block_editor/block_editor.dart';
 /// [EditorEditingOperations] is a pure-Dart helper with no Flutter dependency.
 /// [BlockEditorWidget] holds one instance and delegates all keyboard editing
 /// events to it. Every method is independently testable without a widget tree.
+///
+/// All operations manipulate [TextDelta.ops] directly, preserving inline
+/// formatting across every insertion, deletion, and block split.
 class EditorEditingOperations {
   /// Creates an [EditorEditingOperations] bound to [controller].
   const EditorEditingOperations(this.controller);
@@ -16,8 +19,9 @@ class EditorEditingOperations {
 
   /// Inserts [character] at the current cursor position.
   ///
-  /// Does nothing when the current selection is not a [CollapsedSelection]
-  /// or when [character] is empty.
+  /// The inserted character inherits the [InlineAttributes] of the character
+  /// immediately to its left. Does nothing when the current selection is not
+  /// a [CollapsedSelection] or when [character] is empty.
   void insertCharacter(String character) {
     if (character.isEmpty) return;
     final sel = controller.selection;
@@ -27,17 +31,16 @@ class EditorEditingOperations {
     final node = controller.document.findById(blockId);
     if (node == null) return;
     final delta = node.delta ?? TextDelta.empty();
-    final text = delta.plainText;
-    final newText =
-        text.substring(0, offset) + character + text.substring(offset);
-    controller.updateDelta(blockId, TextDelta.fromPlainText(newText));
+    final newOps = _insertIntoOps(delta.ops, offset, character);
+    controller.updateDelta(blockId, TextDelta(newOps));
     controller.collapseSelection(blockId, offset + character.length);
   }
 
   /// Deletes the character before the cursor or the selected range.
   ///
   /// When the cursor is at offset 0 and there is a previous block, merges
-  /// this block's content into the end of the previous block.
+  /// this block's content into the end of the previous block, preserving
+  /// inline formatting on both sides.
   void backspace() {
     final sel = controller.selection;
     if (sel is ExpandedSelection) {
@@ -52,9 +55,8 @@ class EditorEditingOperations {
 
     if (offset > 0) {
       final delta = node.delta ?? TextDelta.empty();
-      final text = delta.plainText;
-      final newText = text.substring(0, offset - 1) + text.substring(offset);
-      controller.updateDelta(blockId, TextDelta.fromPlainText(newText));
+      final newOps = _deleteRangeFromOps(delta.ops, offset - 1, offset);
+      controller.updateDelta(blockId, TextDelta(newOps));
       controller.collapseSelection(blockId, offset - 1);
       return;
     }
@@ -64,13 +66,10 @@ class EditorEditingOperations {
     if (index == 0) return;
     final prevNode = blocks[index - 1];
     if (prevNode.delta == null) return;
-    final prevText = prevNode.delta!.plainText;
-    final thisText = (node.delta ?? TextDelta.empty()).plainText;
-    final joinOffset = prevText.length;
-    controller.updateDelta(
-      prevNode.id,
-      TextDelta.fromPlainText(prevText + thisText),
-    );
+    final prevDelta = prevNode.delta!;
+    final joinOffset = prevDelta.plainText.length;
+    final thisDelta = node.delta ?? TextDelta.empty();
+    controller.updateDelta(prevNode.id, prevDelta.concat(thisDelta));
     controller.delete(blockId);
     controller.collapseSelection(prevNode.id, joinOffset);
   }
@@ -78,7 +77,8 @@ class EditorEditingOperations {
   /// Deletes the character at the cursor or the selected range.
   ///
   /// When the cursor is at the last offset of the block and there is a next
-  /// block, merges the next block's content into this block.
+  /// block, merges the next block's content into this block, preserving
+  /// inline formatting on both sides.
   void delete() {
     final sel = controller.selection;
     if (sel is ExpandedSelection) {
@@ -91,11 +91,10 @@ class EditorEditingOperations {
     final node = controller.document.findById(blockId);
     if (node == null) return;
     final delta = node.delta ?? TextDelta.empty();
-    final text = delta.plainText;
 
-    if (offset < text.length) {
-      final newText = text.substring(0, offset) + text.substring(offset + 1);
-      controller.updateDelta(blockId, TextDelta.fromPlainText(newText));
+    if (offset < delta.plainText.length) {
+      final newOps = _deleteRangeFromOps(delta.ops, offset, offset + 1);
+      controller.updateDelta(blockId, TextDelta(newOps));
       controller.collapseSelection(blockId, offset);
       return;
     }
@@ -104,8 +103,8 @@ class EditorEditingOperations {
     final index = blocks.indexWhere((b) => b.id == blockId);
     if (index == blocks.length - 1) return;
     final nextNode = blocks[index + 1];
-    final nextText = (nextNode.delta ?? TextDelta.empty()).plainText;
-    controller.updateDelta(blockId, TextDelta.fromPlainText(text + nextText));
+    final nextDelta = nextNode.delta ?? TextDelta.empty();
+    controller.updateDelta(blockId, delta.concat(nextDelta));
     controller.delete(nextNode.id);
     controller.collapseSelection(blockId, offset);
   }
@@ -113,8 +112,9 @@ class EditorEditingOperations {
   /// Splits the current block at the cursor offset or transforms an empty
   /// list block to a paragraph.
   ///
-  /// For list block types ([BlockTypes.bulletList], [BlockTypes.numberedList],
-  /// [BlockTypes.todo]) with an empty delta, transforms the block to a
+  /// The before half retains its inline formatting via [TextDelta.slice].
+  /// The after half retains its inline formatting via [TextDelta.slice].
+  /// For list block types with an empty delta, transforms the block to a
   /// [BlockTypes.paragraph] in place instead of splitting.
   void insertNewline() {
     final sel = controller.selection;
@@ -124,22 +124,22 @@ class EditorEditingOperations {
     final node = controller.document.findById(blockId);
     if (node == null) return;
     final delta = node.delta ?? TextDelta.empty();
-    final text = delta.plainText;
     final isListType = _isListType(node.type);
 
-    if (isListType && text.isEmpty) {
+    if (isListType && delta.isEmpty) {
       controller.transformType(blockId, BlockTypes.paragraph);
       controller.collapseSelection(blockId, 0);
       return;
     }
 
-    final before = text.substring(0, offset);
-    final after = text.substring(offset);
-    controller.updateDelta(blockId, TextDelta.fromPlainText(before));
+    final length = delta.plainText.length;
+    final before = delta.slice(0, offset);
+    final after = delta.slice(offset, length);
+    controller.updateDelta(blockId, before);
     final newNode = BlockNode(
       type: node.type,
       attributes: Map.of(node.attributes)..remove('checked'),
-      delta: TextDelta.fromPlainText(after),
+      delta: after,
     );
     final blocks = controller.document.blocks;
     final index = blocks.indexWhere((b) => b.id == blockId);
@@ -268,6 +268,104 @@ class EditorEditingOperations {
     controller.collapseSelection(blockId, _nextWordBoundary(text, offset));
   }
 
+  List<DeltaOp> _insertIntoOps(
+    List<DeltaOp> ops,
+    int offset,
+    String character,
+  ) {
+    final attrs = _attributesAtOffset(ops, offset);
+    if (ops.isEmpty) {
+      return [TextOp(character, attributes: attrs)];
+    }
+    final result = <DeltaOp>[];
+    var cursor = 0;
+    var inserted = false;
+
+    for (final op in ops) {
+      if (op is! TextOp) {
+        if (!inserted && cursor == offset) {
+          result.add(TextOp(character, attributes: attrs));
+          inserted = true;
+        }
+        result.add(op);
+        continue;
+      }
+      final opEnd = cursor + op.text.length;
+      if (!inserted && offset >= cursor && offset <= opEnd) {
+        final splitAt = offset - cursor;
+        final before = op.text.substring(0, splitAt);
+        final after = op.text.substring(splitAt);
+        if (before.isNotEmpty) {
+          result.add(TextOp(before, attributes: op.attributes));
+        }
+        result.add(TextOp(character, attributes: attrs));
+        if (after.isNotEmpty) {
+          result.add(TextOp(after, attributes: op.attributes));
+        }
+        inserted = true;
+      } else {
+        result.add(op);
+      }
+      cursor = opEnd;
+    }
+
+    if (!inserted) {
+      result.add(TextOp(character, attributes: attrs));
+    }
+
+    return result;
+  }
+
+  List<DeltaOp> _deleteRangeFromOps(List<DeltaOp> ops, int start, int end) {
+    final result = <DeltaOp>[];
+    var cursor = 0;
+
+    for (final op in ops) {
+      if (op is! TextOp) {
+        result.add(op);
+        continue;
+      }
+      final opStart = cursor;
+      final opEnd = cursor + op.text.length;
+      cursor = opEnd;
+
+      if (opEnd <= start || opStart >= end) {
+        result.add(op);
+        continue;
+      }
+
+      final keepBefore = op.text.substring(
+        0,
+        (start - opStart).clamp(0, op.text.length),
+      );
+      final keepAfter = op.text.substring(
+        (end - opStart).clamp(0, op.text.length),
+      );
+
+      if (keepBefore.isNotEmpty) {
+        result.add(TextOp(keepBefore, attributes: op.attributes));
+      }
+      if (keepAfter.isNotEmpty) {
+        result.add(TextOp(keepAfter, attributes: op.attributes));
+      }
+    }
+
+    return result;
+  }
+
+  InlineAttributes _attributesAtOffset(List<DeltaOp> ops, int offset) {
+    if (offset == 0 || ops.isEmpty) return const InlineAttributes();
+    var cursor = 0;
+    for (final op in ops) {
+      if (op is! TextOp) continue;
+      final opEnd = cursor + op.text.length;
+      if (offset > cursor && offset <= opEnd) return op.attributes;
+      cursor = opEnd;
+    }
+    final last = ops.lastWhere((op) => op is TextOp, orElse: () => ops.last);
+    return last is TextOp ? last.attributes : const InlineAttributes();
+  }
+
   void _deleteSelectedRange(ExpandedSelection sel) {
     final ids = controller.document.flatten().map((b) => b.id).toList();
     final resolved = sel.resolveOrder(ids);
@@ -279,10 +377,9 @@ class EditorEditingOperations {
     if (startId == endId) {
       final node = controller.document.findById(startId);
       if (node == null) return;
-      final text = node.delta?.plainText ?? '';
-      final newText =
-          text.substring(0, startOffset) + text.substring(endOffset);
-      controller.updateDelta(startId, TextDelta.fromPlainText(newText));
+      final delta = node.delta ?? TextDelta.empty();
+      final newOps = _deleteRangeFromOps(delta.ops, startOffset, endOffset);
+      controller.updateDelta(startId, TextDelta(newOps));
       controller.collapseSelection(startId, startOffset);
       return;
     }
@@ -291,10 +388,11 @@ class EditorEditingOperations {
     final endNode = controller.document.findById(endId);
     if (startNode == null || endNode == null) return;
 
-    final startText = startNode.delta?.plainText ?? '';
-    final endText = endNode.delta?.plainText ?? '';
-    final mergedText =
-        startText.substring(0, startOffset) + endText.substring(endOffset);
+    final startDelta = startNode.delta ?? TextDelta.empty();
+    final endDelta = endNode.delta ?? TextDelta.empty();
+    final merged = startDelta
+        .slice(0, startOffset)
+        .concat(endDelta.slice(endOffset, endDelta.plainText.length));
 
     final allBlocks = controller.document.flatten();
     final startIndex = allBlocks.indexWhere((b) => b.id == startId);
@@ -302,7 +400,7 @@ class EditorEditingOperations {
     for (var i = endIndex; i > startIndex; i--) {
       controller.delete(allBlocks[i].id);
     }
-    controller.updateDelta(startId, TextDelta.fromPlainText(mergedText));
+    controller.updateDelta(startId, merged);
     controller.collapseSelection(startId, startOffset);
   }
 

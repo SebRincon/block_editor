@@ -2,11 +2,9 @@
 /// scratch in Flutter/Dart.
 ///
 /// Phase 1 exports cover the pure-Dart document model and core engine.
-/// Phase 2 adds the [EditorSelection] model for cross-block selection.
-/// No Flutter imports are present in this layer.
+/// Phase 2 adds the EditorSelection model for cross-block selection.
+/// Phase 3 adds the plugin system, registry, and built-in block plugins.
 library;
-
-import 'package:block_editor/block_editor.dart';
 
 export 'src/model/inline_attributes.dart';
 export 'src/model/delta_op.dart';
@@ -25,3 +23,23 @@ export 'src/rendering/block_selection_overlay.dart';
 export 'src/rendering/block_editor_widget.dart';
 export 'src/editing/editor_editing_operations.dart';
 export 'src/rendering/block_drag_handle.dart';
+export 'src/rendering/block_editor_scope.dart';
+export 'src/plugins/block_plugin.dart';
+export 'src/plugins/slash_command_config.dart';
+export 'src/plugins/toolbar_button_config.dart';
+export 'src/plugins/block_registry.dart';
+export 'src/plugins/built_in/built_in_block_plugins.dart';
+export 'src/plugins/built_in/image_block_config.dart';
+export 'src/plugins/built_in/video_block_config.dart';
+export 'src/plugins/built_in/youtube_block_config.dart';
+export 'src/plugins/built_in/file_block_config.dart';
+export 'src/plugins/built_in/code_block_config.dart';
+export 'src/plugins/built_in/callout_block_config.dart';
+export 'src/plugins/built_in/link_block_config.dart';
+export 'src/plugins/built_in/image_block.dart';
+export 'src/plugins/built_in/video_block.dart';
+export 'src/plugins/built_in/youtube_block.dart';
+export 'src/plugins/built_in/file_block.dart';
+export 'src/plugins/built_in/code_block.dart';
+export 'src/plugins/built_in/callout_block.dart';
+export 'src/plugins/built_in/link_block.dart';

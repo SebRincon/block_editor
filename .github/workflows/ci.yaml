@@ -87,6 +87,12 @@ jobs:
         working-directory: example
         run: flutter build windows --debug
 
+      - name: Install Linux build dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libgtk-3-dev libx11-dev pkg-config cmake ninja-build libblkid-dev libsecret-1-dev liblzma-dev
+
       - name: Build example app (Linux)
         if: matrix.os == 'ubuntu-latest'
         working-directory: example

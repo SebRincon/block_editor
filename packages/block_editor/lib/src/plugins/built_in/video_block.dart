@@ -1,6 +1,6 @@
 library;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
 
 /// [BlockPlugin] for [BlockTypes.video].
@@ -42,7 +42,7 @@ final class VideoBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Video',
     group: 'Media',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.videocam),
     onSelected: () {},
   );
 
@@ -89,6 +89,7 @@ class _VideoBlockWidget extends StatelessWidget {
   Widget _buildPreview(BuildContext context, VideoBlockConfig? config) {
     return Container(
       height: _defaultHeight,
+      width: double.infinity,
       color: _defaultBackground,
       child: Stack(
         alignment: Alignment.center,
@@ -125,11 +126,7 @@ class _PlayButton extends StatelessWidget {
         color: color.withAlpha(60),
         shape: BoxShape.circle,
       ),
-      child: Icon(
-        const IconData(0xe037, fontFamily: 'MaterialIcons'),
-        color: color,
-        size: 32,
-      ),
+      child: Icon(Icons.play_arrow, color: color, size: 32),
     );
   }
 }

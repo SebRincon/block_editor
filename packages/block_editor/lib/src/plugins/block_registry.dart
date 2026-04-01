@@ -55,9 +55,30 @@ final class BlockRegistry {
     _plugins[plugin.blockType] = plugin;
   }
 
+  /// Registers each plugin in [plugins] for its declared
+  /// [BlockPlugin.blockType].
+  ///
+  /// If multiple plugins in [plugins] share the same block type, the last
+  /// occurrence wins. If a plugin is already registered for a given type,
+  /// it is replaced by the corresponding plugin in [plugins].
+  ///
+  /// Built-in plugins may be replaced by including a plugin in [plugins]
+  /// whose [BlockPlugin.blockType] matches a [BlockTypes] constant.
+  ///
+  /// This is a convenience method for bulk registration and is equivalent
+  /// to calling [register] for each plugin in iteration order.
+  void registerAll(List<BlockPlugin> plugins) {
+    for (final plugin in plugins) {
+      _plugins[plugin.blockType] = plugin;
+    }
+  }
+
   /// Returns the [BlockPlugin] registered for [blockType], or null if none
   /// is registered.
   BlockPlugin? resolve(String blockType) => _plugins[blockType];
+
+  /// Returns all registered [BlockPlugin] instances.
+  Iterable<BlockPlugin> get plugins => _plugins.values;
 
   /// Builds the widget for [node] using its registered plugin.
   ///

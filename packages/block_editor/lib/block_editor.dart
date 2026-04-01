@@ -43,3 +43,8 @@ export 'src/plugins/built_in/file_block.dart';
 export 'src/plugins/built_in/code_block.dart';
 export 'src/plugins/built_in/callout_block.dart';
 export 'src/plugins/built_in/link_block.dart';
+export 'src/rendering/cursor_color_scope.dart';
+export 'src/rendering/keyboard_shortcuts.dart';
+export 'src/rendering/formatting_toolbar.dart';
+export 'src/rendering/slash_command_menu.dart';
+export 'src/rendering/block_action_menu.dart';

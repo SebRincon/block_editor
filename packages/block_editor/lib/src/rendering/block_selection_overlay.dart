@@ -19,7 +19,7 @@ class SelectionHighlightPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, size.height),
+      Rect.fromLTWH(0, 1, size.width, size.height),
       Paint()..color = color,
     );
   }

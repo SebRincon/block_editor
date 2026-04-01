@@ -10,18 +10,26 @@ import 'package:block_editor/block_editor.dart';
 ///
 /// All operations manipulate [TextDelta.ops] directly, preserving inline
 /// formatting across every insertion, deletion, and block split.
+///
+/// When a formatting shortcut such as [applyBold] is invoked with no active
+/// [ExpandedSelection], the attribute is stored as a pending attribute.
+/// The next call to [insertCharacter] applies all pending attributes to the
+/// inserted character and clears them.
 class EditorEditingOperations {
   /// Creates an [EditorEditingOperations] bound to [controller].
-  const EditorEditingOperations(this.controller);
+  EditorEditingOperations(this.controller);
 
   /// The controller whose document and selection are mutated.
   final BlockController controller;
 
+  InlineAttributes _pending = const InlineAttributes();
+
   /// Inserts [character] at the current cursor position.
   ///
-  /// The inserted character inherits the [InlineAttributes] of the character
-  /// immediately to its left. Does nothing when the current selection is not
-  /// a [CollapsedSelection] or when [character] is empty.
+  /// Inherits [InlineAttributes] from the character immediately to the left,
+  /// merged with any pending attributes set by formatting shortcuts. Pending
+  /// attributes are cleared after each insertion. Does nothing when the
+  /// current selection is not a [CollapsedSelection] or [character] is empty.
   void insertCharacter(String character) {
     if (character.isEmpty) return;
     final sel = controller.selection;
@@ -31,16 +39,15 @@ class EditorEditingOperations {
     final node = controller.document.findById(blockId);
     if (node == null) return;
     final delta = node.delta ?? TextDelta.empty();
-    final newOps = _insertIntoOps(delta.ops, offset, character);
+    final baseAttrs = _attributesAtOffset(delta.ops, offset);
+    final mergedAttrs = _mergePending(baseAttrs);
+    final newOps = _insertIntoOps(delta.ops, offset, character, mergedAttrs);
+    _pending = const InlineAttributes();
     controller.updateDelta(blockId, TextDelta(newOps));
     controller.collapseSelection(blockId, offset + character.length);
   }
 
   /// Deletes the character before the cursor or the selected range.
-  ///
-  /// When the cursor is at offset 0 and there is a previous block, merges
-  /// this block's content into the end of the previous block, preserving
-  /// inline formatting on both sides.
   void backspace() {
     final sel = controller.selection;
     if (sel is ExpandedSelection) {
@@ -52,7 +59,6 @@ class EditorEditingOperations {
     final offset = sel.point.offset;
     final node = controller.document.findById(blockId);
     if (node == null) return;
-
     if (offset > 0) {
       final delta = node.delta ?? TextDelta.empty();
       final newOps = _deleteRangeFromOps(delta.ops, offset - 1, offset);
@@ -60,7 +66,6 @@ class EditorEditingOperations {
       controller.collapseSelection(blockId, offset - 1);
       return;
     }
-
     final blocks = controller.document.blocks;
     final index = blocks.indexWhere((b) => b.id == blockId);
     if (index == 0) return;
@@ -75,10 +80,6 @@ class EditorEditingOperations {
   }
 
   /// Deletes the character at the cursor or the selected range.
-  ///
-  /// When the cursor is at the last offset of the block and there is a next
-  /// block, merges the next block's content into this block, preserving
-  /// inline formatting on both sides.
   void delete() {
     final sel = controller.selection;
     if (sel is ExpandedSelection) {
@@ -91,14 +92,12 @@ class EditorEditingOperations {
     final node = controller.document.findById(blockId);
     if (node == null) return;
     final delta = node.delta ?? TextDelta.empty();
-
     if (offset < delta.plainText.length) {
       final newOps = _deleteRangeFromOps(delta.ops, offset, offset + 1);
       controller.updateDelta(blockId, TextDelta(newOps));
       controller.collapseSelection(blockId, offset);
       return;
     }
-
     final blocks = controller.document.blocks;
     final index = blocks.indexWhere((b) => b.id == blockId);
     if (index == blocks.length - 1) return;
@@ -109,13 +108,7 @@ class EditorEditingOperations {
     controller.collapseSelection(blockId, offset);
   }
 
-  /// Splits the current block at the cursor offset or transforms an empty
-  /// list block to a paragraph.
-  ///
-  /// The before half retains its inline formatting via [TextDelta.slice].
-  /// The after half retains its inline formatting via [TextDelta.slice].
-  /// For list block types with an empty delta, transforms the block to a
-  /// [BlockTypes.paragraph] in place instead of splitting.
+  /// Splits the current block at the cursor or transforms an empty list block.
   void insertNewline() {
     final sel = controller.selection;
     if (sel is! CollapsedSelection) return;
@@ -125,20 +118,25 @@ class EditorEditingOperations {
     if (node == null) return;
     final delta = node.delta ?? TextDelta.empty();
     final isListType = _isListType(node.type);
-
     if (isListType && delta.isEmpty) {
       controller.transformType(blockId, BlockTypes.paragraph);
       controller.collapseSelection(blockId, 0);
       return;
     }
-
+    final isHeading =
+        node.type == BlockTypes.heading1 ||
+        node.type == BlockTypes.heading2 ||
+        node.type == BlockTypes.heading3;
+    final newType = isHeading ? BlockTypes.paragraph : node.type;
     final length = delta.plainText.length;
     final before = delta.slice(0, offset);
     final after = delta.slice(offset, length);
     controller.updateDelta(blockId, before);
     final newNode = BlockNode(
-      type: node.type,
-      attributes: Map.of(node.attributes)..remove('checked'),
+      type: newType,
+      attributes: isHeading
+          ? const {}
+          : (Map.of(node.attributes)..remove('checked')),
       delta: after,
     );
     final blocks = controller.document.blocks;
@@ -148,8 +146,6 @@ class EditorEditingOperations {
   }
 
   /// Increments the indent level of the current list block by 1.
-  ///
-  /// Does nothing for non-list block types. Indent is clamped at 8.
   void indent() {
     final sel = controller.selection;
     if (sel is! CollapsedSelection) return;
@@ -160,8 +156,6 @@ class EditorEditingOperations {
   }
 
   /// Decrements the indent level of the current list block by 1.
-  ///
-  /// Does nothing for non-list block types. Indent is clamped at 0.
   void dedent() {
     final sel = controller.selection;
     if (sel is! CollapsedSelection) return;
@@ -171,21 +165,32 @@ class EditorEditingOperations {
     controller.updateAttributes(node.id, {'indent': (current - 1).clamp(0, 8)});
   }
 
-  /// Applies bold to the current expanded selection.
-  ///
-  /// Does nothing when the selection is collapsed.
-  void applyBold() => _applyInline(const InlineAttributes(bold: true));
+  /// Applies bold to the selection or stores it as a pending attribute.
+  void applyBold() => _applyOrPend(const InlineAttributes(bold: true));
 
-  /// Applies italic to the current expanded selection.
-  ///
-  /// Does nothing when the selection is collapsed.
-  void applyItalic() => _applyInline(const InlineAttributes(italic: true));
+  /// Applies italic to the selection or stores it as a pending attribute.
+  void applyItalic() => _applyOrPend(const InlineAttributes(italic: true));
 
-  /// Applies underline to the current expanded selection.
-  ///
-  /// Does nothing when the selection is collapsed.
+  /// Applies underline to the selection or stores it as a pending attribute.
   void applyUnderline() =>
-      _applyInline(const InlineAttributes(underline: true));
+      _applyOrPend(const InlineAttributes(underline: true));
+
+  /// Applies strikethrough to the selection or stores it as a pending attribute.
+  void applyStrikethrough() =>
+      _applyOrPend(const InlineAttributes(strikethrough: true));
+
+  /// Applies inline code to the selection or stores it as a pending attribute.
+  void applyInlineCode() =>
+      _applyOrPend(const InlineAttributes(inlineCode: true));
+
+  /// Applies link to the selection or stores it as a pending attribute.
+  void applyLink(String? link) =>
+      _applyOrPend(InlineAttributes(link: link ?? ''));
+
+  /// Applies [attributes] to the current expanded selection.
+  ///
+  /// Does nothing when the selection is collapsed.
+  void applyAttributes(InlineAttributes attributes) => _applyOrPend(attributes);
 
   /// Moves the cursor to the start of the current block.
   void moveToLineStart() {
@@ -200,29 +205,28 @@ class EditorEditingOperations {
     if (sel is! CollapsedSelection) return;
     final node = controller.document.findById(sel.point.blockId);
     if (node == null) return;
-    final length = node.delta?.plainText.length ?? 0;
-    controller.collapseSelection(sel.point.blockId, length);
+    controller.collapseSelection(
+      sel.point.blockId,
+      node.delta?.plainText.length ?? 0,
+    );
   }
 
-  /// Moves the cursor to offset 0 of the first block in the document.
+  /// Moves the cursor to offset 0 of the first block.
   void moveToDocumentStart() {
     final blocks = controller.document.blocks;
     if (blocks.isEmpty) return;
     controller.collapseSelection(blocks.first.id, 0);
   }
 
-  /// Moves the cursor to the last offset of the last block in the document.
+  /// Moves the cursor to the last offset of the last block.
   void moveToDocumentEnd() {
     final blocks = controller.document.blocks;
     if (blocks.isEmpty) return;
     final last = blocks.last;
-    final length = last.delta?.plainText.length ?? 0;
-    controller.collapseSelection(last.id, length);
+    controller.collapseSelection(last.id, last.delta?.plainText.length ?? 0);
   }
 
-  /// Moves the cursor one word to the left within the current block.
-  ///
-  /// If already at offset 0 moves to the end of the previous block.
+  /// Moves the cursor one word to the left.
   void moveWordLeft() {
     final sel = controller.selection;
     if (sel is! CollapsedSelection) return;
@@ -231,23 +235,18 @@ class EditorEditingOperations {
     final node = controller.document.findById(blockId);
     if (node == null) return;
     final text = node.delta?.plainText ?? '';
-
     if (offset == 0) {
       final blocks = controller.document.blocks;
       final index = blocks.indexWhere((b) => b.id == blockId);
       if (index == 0) return;
       final prev = blocks[index - 1];
-      final prevLength = prev.delta?.plainText.length ?? 0;
-      controller.collapseSelection(prev.id, prevLength);
+      controller.collapseSelection(prev.id, prev.delta?.plainText.length ?? 0);
       return;
     }
-
     controller.collapseSelection(blockId, _prevWordBoundary(text, offset));
   }
 
-  /// Moves the cursor one word to the right within the current block.
-  ///
-  /// If already at the last offset moves to offset 0 of the next block.
+  /// Moves the cursor one word to the right.
   void moveWordRight() {
     final sel = controller.selection;
     if (sel is! CollapsedSelection) return;
@@ -256,7 +255,6 @@ class EditorEditingOperations {
     final node = controller.document.findById(blockId);
     if (node == null) return;
     final text = node.delta?.plainText ?? '';
-
     if (offset >= text.length) {
       final blocks = controller.document.blocks;
       final index = blocks.indexWhere((b) => b.id == blockId);
@@ -264,23 +262,404 @@ class EditorEditingOperations {
       controller.collapseSelection(blocks[index + 1].id, 0);
       return;
     }
-
     controller.collapseSelection(blockId, _nextWordBoundary(text, offset));
+  }
+
+  /// Moves the cursor one character to the left.
+  void moveCharLeft() {
+    final sel = controller.selection;
+    if (sel is ExpandedSelection) {
+      final ids = controller.document.flatten().map((b) => b.id).toList();
+      final resolved = sel.resolveOrder(ids);
+      controller.collapseSelection(
+        resolved.start.blockId,
+        resolved.start.offset,
+      );
+      return;
+    }
+    if (sel is! CollapsedSelection) return;
+    final blockId = sel.point.blockId;
+    final offset = sel.point.offset;
+    if (offset > 0) {
+      controller.collapseSelection(blockId, offset - 1);
+      return;
+    }
+    final blocks = controller.document.flatten();
+    final index = blocks.indexWhere((b) => b.id == blockId);
+    if (index <= 0) return;
+    final prev = blocks[index - 1];
+    controller.collapseSelection(prev.id, prev.delta?.plainText.length ?? 0);
+  }
+
+  /// Moves the cursor one character to the right.
+  void moveCharRight() {
+    final sel = controller.selection;
+    if (sel is ExpandedSelection) {
+      final ids = controller.document.flatten().map((b) => b.id).toList();
+      final resolved = sel.resolveOrder(ids);
+      controller.collapseSelection(resolved.end.blockId, resolved.end.offset);
+      return;
+    }
+    if (sel is! CollapsedSelection) return;
+    final blockId = sel.point.blockId;
+    final offset = sel.point.offset;
+    final node = controller.document.findById(blockId);
+    final length = node?.delta?.plainText.length ?? 0;
+    if (offset < length) {
+      controller.collapseSelection(blockId, offset + 1);
+      return;
+    }
+    final blocks = controller.document.flatten();
+    final index = blocks.indexWhere((b) => b.id == blockId);
+    if (index >= blocks.length - 1) return;
+    controller.collapseSelection(blocks[index + 1].id, 0);
+  }
+
+  /// Moves the cursor to the end of the previous block.
+  void moveLineUp() {
+    final sel = controller.selection;
+    if (sel is ExpandedSelection) {
+      final ids = controller.document.flatten().map((b) => b.id).toList();
+      final resolved = sel.resolveOrder(ids);
+      controller.collapseSelection(
+        resolved.start.blockId,
+        resolved.start.offset,
+      );
+      return;
+    }
+    if (sel is! CollapsedSelection) return;
+    _moveToPrevBlockEnd(sel.point.blockId);
+  }
+
+  /// Moves the cursor to the start of the next block.
+  void moveLineDown() {
+    final sel = controller.selection;
+    if (sel is ExpandedSelection) {
+      final ids = controller.document.flatten().map((b) => b.id).toList();
+      final resolved = sel.resolveOrder(ids);
+      controller.collapseSelection(resolved.end.blockId, resolved.end.offset);
+      return;
+    }
+    if (sel is! CollapsedSelection) return;
+    _moveToNextBlockStart(sel.point.blockId);
+  }
+
+  void _moveToPrevBlockEnd(String blockId) {
+    final blocks = controller.document.flatten();
+    final index = blocks.indexWhere((b) => b.id == blockId);
+    if (index <= 0) return;
+    final prev = blocks[index - 1];
+    controller.collapseSelection(prev.id, prev.delta?.plainText.length ?? 0);
+  }
+
+  void _moveToNextBlockStart(String blockId) {
+    final blocks = controller.document.flatten();
+    final index = blocks.indexWhere((b) => b.id == blockId);
+    if (index >= blocks.length - 1) return;
+    controller.collapseSelection(blocks[index + 1].id, 0);
+  }
+
+  /// Extends the selection one character to the left.
+  void extendSelectionLeft() {
+    final sel = controller.selection;
+    final anchor = _anchorPoint(sel);
+    if (anchor == null) return;
+    final focus = _focusPoint(sel);
+    if (focus == null) return;
+    if (focus.offset > 0) {
+      controller.updateSelection(
+        ExpandedSelection(
+          anchor: anchor,
+          focus: SelectionPoint(
+            blockId: focus.blockId,
+            offset: focus.offset - 1,
+          ),
+        ),
+      );
+      return;
+    }
+    final blocks = controller.document.flatten();
+    final index = blocks.indexWhere((b) => b.id == focus.blockId);
+    if (index <= 0) return;
+    final prev = blocks[index - 1];
+    controller.updateSelection(
+      ExpandedSelection(
+        anchor: anchor,
+        focus: SelectionPoint(
+          blockId: prev.id,
+          offset: prev.delta?.plainText.length ?? 0,
+        ),
+      ),
+    );
+  }
+
+  /// Extends the selection one character to the right.
+  void extendSelectionRight() {
+    final sel = controller.selection;
+    final anchor = _anchorPoint(sel);
+    if (anchor == null) return;
+    final focus = _focusPoint(sel);
+    if (focus == null) return;
+    final node = controller.document.findById(focus.blockId);
+    final length = node?.delta?.plainText.length ?? 0;
+    if (focus.offset < length) {
+      controller.updateSelection(
+        ExpandedSelection(
+          anchor: anchor,
+          focus: SelectionPoint(
+            blockId: focus.blockId,
+            offset: focus.offset + 1,
+          ),
+        ),
+      );
+      return;
+    }
+    final blocks = controller.document.flatten();
+    final index = blocks.indexWhere((b) => b.id == focus.blockId);
+    if (index >= blocks.length - 1) return;
+    final next = blocks[index + 1];
+    controller.updateSelection(
+      ExpandedSelection(
+        anchor: anchor,
+        focus: SelectionPoint(blockId: next.id, offset: 0),
+      ),
+    );
+  }
+
+  /// Extends the selection up one block.
+  void extendSelectionUp() {
+    final sel = controller.selection;
+    final anchor = _anchorPoint(sel);
+    if (anchor == null) return;
+    final focus = _focusPoint(sel);
+    if (focus == null) return;
+    final blocks = controller.document.flatten();
+    final index = blocks.indexWhere((b) => b.id == focus.blockId);
+    if (index <= 0) return;
+    final prev = blocks[index - 1];
+    controller.updateSelection(
+      ExpandedSelection(
+        anchor: anchor,
+        focus: SelectionPoint(
+          blockId: prev.id,
+          offset: prev.delta?.plainText.length ?? 0,
+        ),
+      ),
+    );
+  }
+
+  /// Extends the selection down one block.
+  void extendSelectionDown() {
+    final sel = controller.selection;
+    final anchor = _anchorPoint(sel);
+    if (anchor == null) return;
+    final focus = _focusPoint(sel);
+    if (focus == null) return;
+    final blocks = controller.document.flatten();
+    final index = blocks.indexWhere((b) => b.id == focus.blockId);
+    if (index >= blocks.length - 1) return;
+    final next = blocks[index + 1];
+    controller.updateSelection(
+      ExpandedSelection(
+        anchor: anchor,
+        focus: SelectionPoint(
+          blockId: next.id,
+          offset: next.delta?.plainText.length ?? 0,
+        ),
+      ),
+    );
+  }
+
+  /// Extends the selection to the start of the focus block.
+  void extendSelectionToLineStart() {
+    final sel = controller.selection;
+    final anchor = _anchorPoint(sel);
+    if (anchor == null) return;
+    final focus = _focusPoint(sel);
+    if (focus == null) return;
+    controller.updateSelection(
+      ExpandedSelection(
+        anchor: anchor,
+        focus: SelectionPoint(blockId: focus.blockId, offset: 0),
+      ),
+    );
+  }
+
+  /// Extends the selection to the end of the focus block.
+  void extendSelectionToLineEnd() {
+    final sel = controller.selection;
+    final anchor = _anchorPoint(sel);
+    if (anchor == null) return;
+    final focus = _focusPoint(sel);
+    if (focus == null) return;
+    final node = controller.document.findById(focus.blockId);
+    final length = node?.delta?.plainText.length ?? 0;
+    controller.updateSelection(
+      ExpandedSelection(
+        anchor: anchor,
+        focus: SelectionPoint(blockId: focus.blockId, offset: length),
+      ),
+    );
+  }
+
+  /// Extends the selection to offset 0 of the first block.
+  void extendSelectionToDocumentStart() {
+    final sel = controller.selection;
+    final anchor = _anchorPoint(sel);
+    if (anchor == null) return;
+    final blocks = controller.document.blocks;
+    if (blocks.isEmpty) return;
+    controller.updateSelection(
+      ExpandedSelection(
+        anchor: anchor,
+        focus: SelectionPoint(blockId: blocks.first.id, offset: 0),
+      ),
+    );
+  }
+
+  /// Extends the selection to the last offset of the last block.
+  void extendSelectionToDocumentEnd() {
+    final sel = controller.selection;
+    final anchor = _anchorPoint(sel);
+    if (anchor == null) return;
+    final blocks = controller.document.blocks;
+    if (blocks.isEmpty) return;
+    final last = blocks.last;
+    controller.updateSelection(
+      ExpandedSelection(
+        anchor: anchor,
+        focus: SelectionPoint(
+          blockId: last.id,
+          offset: last.delta?.plainText.length ?? 0,
+        ),
+      ),
+    );
+  }
+
+  /// Extends the selection one word to the left.
+  void extendSelectionWordLeft() {
+    final sel = controller.selection;
+    final anchor = _anchorPoint(sel);
+    if (anchor == null) return;
+    final focus = _focusPoint(sel);
+    if (focus == null) return;
+    final blockId = focus.blockId;
+    final offset = focus.offset;
+    final node = controller.document.findById(blockId);
+    final text = node?.delta?.plainText ?? '';
+    if (offset == 0) {
+      final blocks = controller.document.flatten();
+      final index = blocks.indexWhere((b) => b.id == blockId);
+      if (index <= 0) return;
+      final prev = blocks[index - 1];
+      controller.updateSelection(
+        ExpandedSelection(
+          anchor: anchor,
+          focus: SelectionPoint(
+            blockId: prev.id,
+            offset: prev.delta?.plainText.length ?? 0,
+          ),
+        ),
+      );
+      return;
+    }
+    controller.updateSelection(
+      ExpandedSelection(
+        anchor: anchor,
+        focus: SelectionPoint(
+          blockId: blockId,
+          offset: _prevWordBoundary(text, offset),
+        ),
+      ),
+    );
+  }
+
+  /// Extends the selection one word to the right.
+  void extendSelectionWordRight() {
+    final sel = controller.selection;
+    final anchor = _anchorPoint(sel);
+    if (anchor == null) return;
+    final focus = _focusPoint(sel);
+    if (focus == null) return;
+    final blockId = focus.blockId;
+    final offset = focus.offset;
+    final node = controller.document.findById(blockId);
+    final text = node?.delta?.plainText ?? '';
+    if (offset >= text.length) {
+      final blocks = controller.document.flatten();
+      final index = blocks.indexWhere((b) => b.id == blockId);
+      if (index >= blocks.length - 1) return;
+      controller.updateSelection(
+        ExpandedSelection(
+          anchor: anchor,
+          focus: SelectionPoint(blockId: blocks[index + 1].id, offset: 0),
+        ),
+      );
+      return;
+    }
+    controller.updateSelection(
+      ExpandedSelection(
+        anchor: anchor,
+        focus: SelectionPoint(
+          blockId: blockId,
+          offset: _nextWordBoundary(text, offset),
+        ),
+      ),
+    );
+  }
+
+  SelectionPoint? _anchorPoint(EditorSelection sel) {
+    if (sel is CollapsedSelection) return sel.point;
+    if (sel is ExpandedSelection) return sel.anchor;
+    return null;
+  }
+
+  SelectionPoint? _focusPoint(EditorSelection sel) {
+    if (sel is CollapsedSelection) return sel.point;
+    if (sel is ExpandedSelection) return sel.focus;
+    return null;
+  }
+
+  void _applyOrPend(InlineAttributes attributes) {
+    final sel = controller.selection;
+    if (sel is ExpandedSelection) {
+      _applyInline(attributes);
+    } else if (sel is CollapsedSelection) {
+      _pending = _mergeIntoAttributes(_pending, attributes);
+    }
+  }
+
+  InlineAttributes _mergeIntoAttributes(
+    InlineAttributes base,
+    InlineAttributes overlay,
+  ) {
+    return InlineAttributes(
+      bold: overlay.bold ?? base.bold,
+      italic: overlay.italic ?? base.italic,
+      underline: overlay.underline ?? base.underline,
+      strikethrough: overlay.strikethrough ?? base.strikethrough,
+      inlineCode: overlay.inlineCode ?? base.inlineCode,
+      link: overlay.link ?? base.link,
+      color: overlay.color ?? base.color,
+      backgroundColor: overlay.backgroundColor ?? base.backgroundColor,
+    );
+  }
+
+  InlineAttributes _mergePending(InlineAttributes base) {
+    if (_pending.isEmpty) return base;
+    return _mergeIntoAttributes(base, _pending);
   }
 
   List<DeltaOp> _insertIntoOps(
     List<DeltaOp> ops,
     int offset,
     String character,
+    InlineAttributes attrs,
   ) {
-    final attrs = _attributesAtOffset(ops, offset);
-    if (ops.isEmpty) {
-      return [TextOp(character, attributes: attrs)];
-    }
+    if (ops.isEmpty) return [TextOp(character, attributes: attrs)];
     final result = <DeltaOp>[];
     var cursor = 0;
     var inserted = false;
-
     for (final op in ops) {
       if (op is! TextOp) {
         if (!inserted && cursor == offset) {
@@ -288,6 +667,7 @@ class EditorEditingOperations {
           inserted = true;
         }
         result.add(op);
+        cursor++;
         continue;
       }
       final opEnd = cursor + op.text.length;
@@ -308,32 +688,26 @@ class EditorEditingOperations {
       }
       cursor = opEnd;
     }
-
-    if (!inserted) {
-      result.add(TextOp(character, attributes: attrs));
-    }
-
+    if (!inserted) result.add(TextOp(character, attributes: attrs));
     return result;
   }
 
   List<DeltaOp> _deleteRangeFromOps(List<DeltaOp> ops, int start, int end) {
     final result = <DeltaOp>[];
     var cursor = 0;
-
     for (final op in ops) {
       if (op is! TextOp) {
-        result.add(op);
+        if (cursor < start || cursor >= end) result.add(op);
+        cursor++;
         continue;
       }
       final opStart = cursor;
       final opEnd = cursor + op.text.length;
       cursor = opEnd;
-
       if (opEnd <= start || opStart >= end) {
         result.add(op);
         continue;
       }
-
       final keepBefore = op.text.substring(
         0,
         (start - opStart).clamp(0, op.text.length),
@@ -341,7 +715,6 @@ class EditorEditingOperations {
       final keepAfter = op.text.substring(
         (end - opStart).clamp(0, op.text.length),
       );
-
       if (keepBefore.isNotEmpty) {
         result.add(TextOp(keepBefore, attributes: op.attributes));
       }
@@ -349,7 +722,6 @@ class EditorEditingOperations {
         result.add(TextOp(keepAfter, attributes: op.attributes));
       }
     }
-
     return result;
   }
 
@@ -357,7 +729,10 @@ class EditorEditingOperations {
     if (offset == 0 || ops.isEmpty) return const InlineAttributes();
     var cursor = 0;
     for (final op in ops) {
-      if (op is! TextOp) continue;
+      if (op is! TextOp) {
+        cursor++;
+        continue;
+      }
       final opEnd = cursor + op.text.length;
       if (offset > cursor && offset <= opEnd) return op.attributes;
       cursor = opEnd;
@@ -373,7 +748,6 @@ class EditorEditingOperations {
     final endId = resolved.end.blockId;
     final startOffset = resolved.start.offset;
     final endOffset = resolved.end.offset;
-
     if (startId == endId) {
       final node = controller.document.findById(startId);
       if (node == null) return;
@@ -383,17 +757,14 @@ class EditorEditingOperations {
       controller.collapseSelection(startId, startOffset);
       return;
     }
-
     final startNode = controller.document.findById(startId);
     final endNode = controller.document.findById(endId);
     if (startNode == null || endNode == null) return;
-
     final startDelta = startNode.delta ?? TextDelta.empty();
     final endDelta = endNode.delta ?? TextDelta.empty();
     final merged = startDelta
         .slice(0, startOffset)
         .concat(endDelta.slice(endOffset, endDelta.plainText.length));
-
     final allBlocks = controller.document.flatten();
     final startIndex = allBlocks.indexWhere((b) => b.id == startId);
     final endIndex = allBlocks.indexWhere((b) => b.id == endId);

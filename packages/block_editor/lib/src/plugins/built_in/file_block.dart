@@ -1,6 +1,6 @@
 library;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
 
 /// [BlockPlugin] for [BlockTypes.file].
@@ -45,7 +45,7 @@ final class FileBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'File',
     group: 'Media',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.insert_drive_file),
     onSelected: () {},
   );
 

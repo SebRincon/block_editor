@@ -64,6 +64,34 @@ void main() {
       );
     });
 
+    test(
+      'registerAll registers multiple plugins and overwrites duplicates in order',
+      () {
+        final first = _StubPlugin(blockType: 'multi_a');
+        final second = _StubPlugin(blockType: 'multi_b');
+        final overwrite1 = _StubPlugin(blockType: 'multi_overwrite');
+        final overwrite2 = _StubPlugin(blockType: 'multi_overwrite');
+
+        BlockRegistry.instance.registerAll([
+          first,
+          second,
+          overwrite1,
+          overwrite2,
+        ]);
+
+        expect(BlockRegistry.instance.resolve('multi_a'), same(first));
+        expect(BlockRegistry.instance.resolve('multi_b'), same(second));
+
+        expect(
+          identical(
+            BlockRegistry.instance.resolve('multi_overwrite'),
+            overwrite2,
+          ),
+          isTrue,
+        );
+      },
+    );
+
     test('build returns UnknownBlock for unregistered type', () {
       final node = BlockNode(type: '__unknown_xyz__');
       final widget = BlockRegistry.instance.build(

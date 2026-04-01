@@ -171,7 +171,7 @@ void main() {
         type: BlockTypes.paragraph,
         delta: TextDelta.fromPlainText('ghost content'),
       );
-      await tester.pumpWidget(wrap(BlockGhost(node: node, width: 300)));
+      await tester.pumpWidget(wrap(BlockGhost(node: node, width: 700)));
       expect(tester.takeException(), isNull);
     });
   });

@@ -1,6 +1,6 @@
 library;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
 
 /// [BlockPlugin] for [BlockTypes.paragraph].
@@ -33,7 +33,7 @@ final class ParagraphBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Text',
     group: 'Basic',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.notes),
     onSelected: () {},
   );
 
@@ -71,7 +71,7 @@ final class H1Block extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Heading 1',
     group: 'Basic',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.title),
     onSelected: () {},
   );
 
@@ -109,7 +109,7 @@ final class H2Block extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Heading 2',
     group: 'Basic',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.text_fields),
     onSelected: () {},
   );
 
@@ -147,7 +147,7 @@ final class H3Block extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Heading 3',
     group: 'Basic',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.short_text),
     onSelected: () {},
   );
 
@@ -186,7 +186,7 @@ final class BulletListBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Bullet List',
     group: 'Basic',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.format_list_bulleted),
     onSelected: () {},
   );
 
@@ -226,7 +226,7 @@ final class NumberedListBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Numbered List',
     group: 'Basic',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.format_list_numbered),
     onSelected: () {},
   );
 
@@ -265,7 +265,7 @@ final class TodoBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'To-do',
     group: 'Basic',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.check_box_outlined),
     onSelected: () {},
   );
 
@@ -303,7 +303,7 @@ final class QuoteBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Quote',
     group: 'Basic',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.format_quote),
     onSelected: () {},
   );
 
@@ -336,7 +336,7 @@ final class DividerBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Divider',
     group: 'Basic',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.horizontal_rule),
     onSelected: () {},
   );
 

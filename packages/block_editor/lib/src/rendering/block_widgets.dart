@@ -1,29 +1,34 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:block_editor/block_editor.dart';
+import 'editor_span_builder.dart';
 
-int _resolveOffset(GlobalKey key, Offset localPosition) {
-  final renderObject = key.currentContext?.findRenderObject();
-  if (renderObject == null) return 0;
-  RenderParagraph? paragraph;
-  void visitor(RenderObject child) {
-    if (paragraph != null) return;
-    if (child is RenderParagraph) {
-      paragraph = child;
-      return;
-    }
-    child.visitChildren(visitor);
-  }
+int _resolveOffset(
+  GlobalKey key,
+  Offset globalPosition,
+  TextDelta delta,
+  TextStyle baseStyle,
+  Map<String, String> variables,
+) {
+  final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+  if (renderBox == null) return 0;
 
-  if (renderObject is RenderParagraph) {
-    paragraph = renderObject;
-  } else {
-    renderObject.visitChildren(visitor);
-  }
-  if (paragraph == null) return 0;
-  return paragraph!.getPositionForOffset(localPosition).offset;
+  final localPosition = renderBox.globalToLocal(globalPosition);
+  final constrainedWidth = renderBox.size.width;
+  final renderedHeight = renderBox.size.height;
+
+  final span = buildMeasurementSpan(delta, baseStyle, variables);
+  final painter = TextPainter(text: span, textDirection: TextDirection.ltr)
+    ..layout(maxWidth: constrainedWidth);
+
+  final scale = renderedHeight > 0 && painter.height > 0
+      ? painter.height / renderedHeight
+      : 1.0;
+  final scaledPosition = Offset(localPosition.dx, localPosition.dy * scale);
+
+  final visualOffset = painter.getPositionForOffset(scaledPosition).offset;
+  return visualToModelOffset(delta, visualOffset, variables);
 }
 
 /// A paragraph block widget.
@@ -55,20 +60,36 @@ class ParagraphWidget extends StatefulWidget {
 
 class _ParagraphWidgetState extends State<ParagraphWidget> {
   final _textKey = GlobalKey();
+  final _gestureKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (details) {
-        final offset = _resolveOffset(_textKey, details.localPosition);
-        widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
-      },
-      child: RichTextRenderer(
-        key: _textKey,
-        delta: widget.delta,
-        blockId: widget.blockId,
-        selection: widget.selection,
-        baseStyle: const TextStyle(fontSize: 16),
+    return MouseRegion(
+      cursor: SystemMouseCursors.text,
+      child: GestureDetector(
+        key: _gestureKey,
+        onTapDown: (details) {
+          final offset = _resolveOffset(
+            _textKey,
+            details.globalPosition,
+            widget.delta,
+            const TextStyle(fontSize: 16),
+            BlockEditorScope.maybeOf(context)?.variables ?? const {},
+          );
+          widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
+        },
+        child: RichTextRenderer(
+          key: _textKey,
+          delta: widget.delta,
+          blockId: widget.blockId,
+          selection: widget.selection,
+          baseStyle: const TextStyle(fontSize: 16),
+        ),
       ),
     );
   }
@@ -106,17 +127,26 @@ class _H1WidgetState extends State<H1Widget> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (details) {
-        final offset = _resolveOffset(_textKey, details.localPosition);
-        widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
-      },
-      child: RichTextRenderer(
-        key: _textKey,
-        delta: widget.delta,
-        blockId: widget.blockId,
-        selection: widget.selection,
-        baseStyle: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+    return MouseRegion(
+      cursor: SystemMouseCursors.text,
+      child: GestureDetector(
+        onTapDown: (details) {
+          final offset = _resolveOffset(
+            _textKey,
+            details.globalPosition,
+            widget.delta,
+            const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+            BlockEditorScope.maybeOf(context)?.variables ?? const {},
+          );
+          widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
+        },
+        child: RichTextRenderer(
+          key: _textKey,
+          delta: widget.delta,
+          blockId: widget.blockId,
+          selection: widget.selection,
+          baseStyle: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+        ),
       ),
     );
   }
@@ -154,17 +184,26 @@ class _H2WidgetState extends State<H2Widget> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (details) {
-        final offset = _resolveOffset(_textKey, details.localPosition);
-        widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
-      },
-      child: RichTextRenderer(
-        key: _textKey,
-        delta: widget.delta,
-        blockId: widget.blockId,
-        selection: widget.selection,
-        baseStyle: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+    return MouseRegion(
+      cursor: SystemMouseCursors.text,
+      child: GestureDetector(
+        onTapDown: (details) {
+          final offset = _resolveOffset(
+            _textKey,
+            details.globalPosition,
+            widget.delta,
+            const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+            BlockEditorScope.maybeOf(context)?.variables ?? const {},
+          );
+          widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
+        },
+        child: RichTextRenderer(
+          key: _textKey,
+          delta: widget.delta,
+          blockId: widget.blockId,
+          selection: widget.selection,
+          baseStyle: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+        ),
       ),
     );
   }
@@ -202,17 +241,26 @@ class _H3WidgetState extends State<H3Widget> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (details) {
-        final offset = _resolveOffset(_textKey, details.localPosition);
-        widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
-      },
-      child: RichTextRenderer(
-        key: _textKey,
-        delta: widget.delta,
-        blockId: widget.blockId,
-        selection: widget.selection,
-        baseStyle: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+    return MouseRegion(
+      cursor: SystemMouseCursors.text,
+      child: GestureDetector(
+        onTapDown: (details) {
+          final offset = _resolveOffset(
+            _textKey,
+            details.globalPosition,
+            widget.delta,
+            const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            BlockEditorScope.maybeOf(context)?.variables ?? const {},
+          );
+          widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
+        },
+        child: RichTextRenderer(
+          key: _textKey,
+          delta: widget.delta,
+          blockId: widget.blockId,
+          selection: widget.selection,
+          baseStyle: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
       ),
     );
   }
@@ -265,19 +313,28 @@ class _BulletListWidgetState extends State<BulletListWidget> {
             child: Text('•', style: TextStyle(fontSize: 16)),
           ),
           Expanded(
-            child: GestureDetector(
-              onTapDown: (details) {
-                final offset = _resolveOffset(_textKey, details.localPosition);
-                widget.onEvent(
-                  TapEvent(blockId: widget.blockId, offset: offset),
-                );
-              },
-              child: RichTextRenderer(
-                key: _textKey,
-                delta: widget.delta,
-                blockId: widget.blockId,
-                selection: widget.selection,
-                baseStyle: const TextStyle(fontSize: 16),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.text,
+              child: GestureDetector(
+                onTapDown: (details) {
+                  final offset = _resolveOffset(
+                    _textKey,
+                    details.globalPosition,
+                    widget.delta,
+                    const TextStyle(fontSize: 16),
+                    BlockEditorScope.maybeOf(context)?.variables ?? const {},
+                  );
+                  widget.onEvent(
+                    TapEvent(blockId: widget.blockId, offset: offset),
+                  );
+                },
+                child: RichTextRenderer(
+                  key: _textKey,
+                  delta: widget.delta,
+                  blockId: widget.blockId,
+                  selection: widget.selection,
+                  baseStyle: const TextStyle(fontSize: 16),
+                ),
               ),
             ),
           ),
@@ -341,19 +398,28 @@ class _NumberedListWidgetState extends State<NumberedListWidget> {
             ),
           ),
           Expanded(
-            child: GestureDetector(
-              onTapDown: (details) {
-                final offset = _resolveOffset(_textKey, details.localPosition);
-                widget.onEvent(
-                  TapEvent(blockId: widget.blockId, offset: offset),
-                );
-              },
-              child: RichTextRenderer(
-                key: _textKey,
-                delta: widget.delta,
-                blockId: widget.blockId,
-                selection: widget.selection,
-                baseStyle: const TextStyle(fontSize: 16),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.text,
+              child: GestureDetector(
+                onTapDown: (details) {
+                  final offset = _resolveOffset(
+                    _textKey,
+                    details.globalPosition,
+                    widget.delta,
+                    const TextStyle(fontSize: 16),
+                    BlockEditorScope.maybeOf(context)?.variables ?? const {},
+                  );
+                  widget.onEvent(
+                    TapEvent(blockId: widget.blockId, offset: offset),
+                  );
+                },
+                child: RichTextRenderer(
+                  key: _textKey,
+                  delta: widget.delta,
+                  blockId: widget.blockId,
+                  selection: widget.selection,
+                  baseStyle: const TextStyle(fontSize: 16),
+                ),
               ),
             ),
           ),
@@ -402,33 +468,49 @@ class _TodoWidgetState extends State<TodoWidget> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: () => widget.onEvent(
-            CheckboxToggledEvent(
-              blockId: widget.blockId,
-              checked: !widget.checked,
+        MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => widget.onEvent(
+              CheckboxToggledEvent(
+                blockId: widget.blockId,
+                checked: !widget.checked,
+              ),
             ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.only(right: 8, top: 2),
-            child: _Checkbox(checked: widget.checked),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8, top: 2),
+              child: _Checkbox(checked: widget.checked),
+            ),
           ),
         ),
         Expanded(
-          child: GestureDetector(
-            onTapDown: (details) {
-              final offset = _resolveOffset(_textKey, details.localPosition);
-              widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
-            },
-            child: RichTextRenderer(
-              key: _textKey,
-              delta: widget.delta,
-              blockId: widget.blockId,
-              selection: widget.selection,
-              baseStyle: TextStyle(
-                fontSize: 16,
-                decoration: widget.checked ? TextDecoration.lineThrough : null,
-                color: widget.checked ? const Color(0xFF999999) : null,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.text,
+            child: GestureDetector(
+              onTapDown: (details) {
+                final offset = _resolveOffset(
+                  _textKey,
+                  details.globalPosition,
+                  widget.delta,
+                  const TextStyle(fontSize: 16),
+                  BlockEditorScope.maybeOf(context)?.variables ?? const {},
+                );
+                widget.onEvent(
+                  TapEvent(blockId: widget.blockId, offset: offset),
+                );
+              },
+              child: RichTextRenderer(
+                key: _textKey,
+                delta: widget.delta,
+                blockId: widget.blockId,
+                selection: widget.selection,
+                baseStyle: TextStyle(
+                  fontSize: 16,
+                  decoration: widget.checked
+                      ? TextDecoration.lineThrough
+                      : null,
+                  color: widget.checked ? const Color(0xFF999999) : null,
+                ),
               ),
             ),
           ),
@@ -496,23 +578,37 @@ class _QuoteWidgetState extends State<QuoteWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (details) {
-        final offset = _resolveOffset(_textKey, details.localPosition);
-        widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
-      },
-      child: DecoratedBox(
-        decoration: const BoxDecoration(
-          border: Border(left: BorderSide(color: Color(0xFFCCCCCC), width: 4)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.only(left: 12),
-          child: RichTextRenderer(
-            key: _textKey,
-            delta: widget.delta,
-            blockId: widget.blockId,
-            selection: widget.selection,
-            baseStyle: const TextStyle(fontSize: 16, color: Color(0xFF666666)),
+    return MouseRegion(
+      cursor: SystemMouseCursors.text,
+      child: GestureDetector(
+        onTapDown: (details) {
+          final offset = _resolveOffset(
+            _textKey,
+            details.globalPosition,
+            widget.delta,
+            const TextStyle(fontSize: 16, color: Color(0xFF666666)),
+            BlockEditorScope.maybeOf(context)?.variables ?? const {},
+          );
+          widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
+        },
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            border: Border(
+              left: BorderSide(color: Color(0xFFCCCCCC), width: 4),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: RichTextRenderer(
+              key: _textKey,
+              delta: widget.delta,
+              blockId: widget.blockId,
+              selection: widget.selection,
+              baseStyle: const TextStyle(
+                fontSize: 16,
+                color: Color(0xFF666666),
+              ),
+            ),
           ),
         ),
       ),

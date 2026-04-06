@@ -66,6 +66,10 @@ class RichTextRenderer extends StatelessWidget {
       TextSpan(style: baseStyle, children: spans),
       textAlign: textAlign,
       semanticsLabel: delta.plainText,
+      textHeightBehavior: const TextHeightBehavior(
+        applyHeightToFirstAscent: false,
+        applyHeightToLastDescent: false,
+      ),
     );
 
     final sel = selection;
@@ -410,8 +414,14 @@ class _InlineCursorPainter extends CustomPainter {
     if (cursorOffset < 0) return;
 
     final span = buildMeasurementSpan(delta, baseStyle, variables);
-    final painter = TextPainter(text: span, textDirection: TextDirection.ltr)
-      ..layout(maxWidth: textWidth);
+    final painter = TextPainter(
+      text: span,
+      textDirection: TextDirection.ltr,
+      textHeightBehavior: const TextHeightBehavior(
+        applyHeightToFirstAscent: false,
+        applyHeightToLastDescent: false,
+      ),
+    )..layout(maxWidth: textWidth);
 
     final visualOffset = modelToVisualOffset(delta, cursorOffset, variables);
     final plainVisualLength = span.toPlainText().length;

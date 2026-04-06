@@ -79,8 +79,8 @@ melos run lint
 | Phase | Description | Status |
 |---|---|---|
 | 1 | Document Model & Core Engine | ✅ Complete |
-| 2 | Rendering Engine | 🚧 In progress |
-| 3 | Block Plugin System | ⏳ Pending |
+| 2 | Rendering Engine | ✅ Complete |
+| 3 | Block Plugin System | ✅ Complete |
 | 4 | Toolbar & Commands | ⏳ Pending |
 | 5 | Export & Import | ⏳ Pending |
 | 6 | Differentiating Features | ⏳ Pending |

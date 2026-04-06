@@ -7,6 +7,17 @@ This package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.0.4-dev.1] — 2026-04-02
+
+Re-release of Phase 4 content with updated package README and fully working example app. No API changes from `0.0.3-dev.1`.
+
+### Changed
+
+- Package `README.md` rewritten with full public API documentation, usage examples, and roadmap
+- Example app completed — demonstrates all built-in block types, formatting toolbar, slash command menu, block action menu, keyboard shortcuts, drag and drop, and read-only viewer mode
+
+---
+
 ## [0.0.3-dev.1] — 2026-04-01
 
 Phase 4 — Toolbar & Commands. 540 tests passing. API is unstable — breaking changes are expected before `1.0.0`.

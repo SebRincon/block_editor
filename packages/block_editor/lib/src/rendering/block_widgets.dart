@@ -306,7 +306,7 @@ class _BulletListWidgetState extends State<BulletListWidget> {
     return Padding(
       padding: EdgeInsets.only(left: indent * 24.0),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const SizedBox(
             width: 24,
@@ -388,7 +388,7 @@ class _NumberedListWidgetState extends State<NumberedListWidget> {
     return Padding(
       padding: EdgeInsets.only(left: indent * 24.0),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
             width: 24,
@@ -466,7 +466,7 @@ class _TodoWidgetState extends State<TodoWidget> {
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         MouseRegion(
           cursor: SystemMouseCursors.click,

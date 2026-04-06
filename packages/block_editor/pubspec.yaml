@@ -3,7 +3,7 @@ description: >-
   A Notion-inspired, block-based rich text editor for Flutter. Built from
   scratch with a plugin system, inline embeds, variables, tags, and export
   to JSON, Markdown, and HTML.
-version: 0.0.3-dev.1
+version: 0.0.4-dev.1
 resolution: workspace
 homepage: https://github.com/stanlysilas/block_editor
 repository: https://github.com/stanlysilas/block_editor

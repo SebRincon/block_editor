@@ -27,8 +27,7 @@ block_editor/
 │   ├── block_editor/          # Core package
 │   └── block_editor_plugins/  # Companion plugins package (placeholder)
 ├── example/                   # Example Flutter app
-├── .github/                   # CI workflows and issue templates
-└── melos.yaml                 # Mono-repo configuration
+└── .github/                   # CI workflows and issue templates
 ```
 
 ---
@@ -81,7 +80,7 @@ melos run lint
 | 1 | Document Model & Core Engine | ✅ Complete |
 | 2 | Rendering Engine | ✅ Complete |
 | 3 | Block Plugin System | ✅ Complete |
-| 4 | Toolbar & Commands | ⏳ Pending |
+| 4 | Toolbar & Commands | ✅ Complete |
 | 5 | Export & Import | ⏳ Pending |
 | 6 | Differentiating Features | ⏳ Pending |
 | 7 | Polish & Release | ⏳ Pending |

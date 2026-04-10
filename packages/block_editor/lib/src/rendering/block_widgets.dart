@@ -60,19 +60,12 @@ class ParagraphWidget extends StatefulWidget {
 
 class _ParagraphWidgetState extends State<ParagraphWidget> {
   final _textKey = GlobalKey();
-  final _gestureKey = GlobalKey();
-
-  @override
-  void initState() {
-    super.initState();
-  }
 
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
-        key: _gestureKey,
         onTapDown: (details) {
           final offset = _resolveOffset(
             _textKey,
@@ -306,7 +299,7 @@ class _BulletListWidgetState extends State<BulletListWidget> {
     return Padding(
       padding: EdgeInsets.only(left: indent * 24.0),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(
             width: 24,
@@ -388,7 +381,7 @@ class _NumberedListWidgetState extends State<NumberedListWidget> {
     return Padding(
       padding: EdgeInsets.only(left: indent * 24.0),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 24,

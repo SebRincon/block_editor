@@ -4,6 +4,7 @@
 /// Phase 1 exports cover the pure-Dart document model and core engine.
 /// Phase 2 adds the EditorSelection model for cross-block selection.
 /// Phase 3 adds the plugin system, registry, and built-in block plugins.
+/// Phase 4 adds the FormattingToolbar, SlashCommandMenu and BlockActionMenu.
 library;
 
 export 'src/model/inline_attributes.dart';

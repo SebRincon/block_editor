@@ -9,35 +9,61 @@ import 'package:block_editor/block_editor.dart';
 /// The root widget of the block editor.
 ///
 /// [BlockEditorWidget] assembles the full rendering pipeline — block layout,
-/// cursor, selection highlight, keyboard routing, scroll, and IME input — on
-/// top of a [BlockController] supplied by the caller.
+/// cursor, selection highlight, keyboard routing, scroll, IME input, the
+/// context-sensitive formatting toolbar, and the slash command menu — on top
+/// of a [BlockController] supplied by the caller.
 ///
 /// The caller owns the [controller] and is responsible for calling
 /// [BlockController.dispose] when it is no longer needed.
 ///
 /// Setting [readOnly] to true switches the editor into a clean viewer mode.
-/// All editing operations, keyboard shortcuts, and IME input are disabled.
+/// All editing operations, keyboard shortcuts, IME input, and the formatting
+/// toolbar are disabled.
+///
+/// ## Formatting toolbar display modes
+///
+/// The toolbar appears whenever the editor has an active [ExpandedSelection]
+/// and [readOnly] is false. Its layout adapts to the available screen width
+/// compared to [toolbarBreakpoint]:
+///
+/// - **Wide** (available width ≥ [toolbarBreakpoint]): the toolbar floats
+///   above the selected block, horizontally centered and clamped to screen
+///   edges.
+/// - **Narrow / desktop**: the toolbar is pinned to the bottom of the
+///   editor's own bounds.
+///
+/// ## Color picker
+///
+/// The toolbar includes text color and background color buttons. Their
+/// behavior depends on [onColorPickerRequested]:
+///
+/// **Zero-config (default, [onColorPickerRequested] is null):**
+/// ```dart
+/// BlockEditorWidget(controller: controller)
+/// ```
+/// Tapping either color button opens a built-in 12-swatch palette popover
+/// with a clear option. The palette is a private implementation detail of the
+/// toolbar and is not part of the public API.
+///
+/// **Custom color picker ([onColorPickerRequested] is non-null):**
+/// ```dart
+/// BlockEditorWidget(
+///   controller: controller,
+///   onColorPickerRequested: (currentColor) async {
+///     final picked = await showMyColorPicker(
+///       context: context,
+///       initialColor: currentColor,
+///     );
+///     return picked;
+///   },
+/// )
+/// ```
+/// The callback receives the current color of the first op in the selection
+/// (may be null if no color is set) and must return a [Future<Color?>].
+/// When the future resolves to a non-null [Color] that color is applied to
+/// the selection. When it resolves to null no change is made. The built-in
+/// palette is never shown when this callback is provided.
 class BlockEditorWidget extends StatefulWidget {
-  /// Creates a [BlockEditorWidget] driven by [controller].
-  ///
-  /// [controller] must not be null and must outlive this widget.
-  ///
-  /// [scrollController] is optional. When not supplied an internal
-  /// [ScrollController] is created and managed by this widget.
-  ///
-  /// [padding] is applied around the block list. Defaults to 16px on all
-  /// sides.
-  ///
-  /// [cursorColor] is forwarded to every [BlockCursor] in the list.
-  ///
-  /// [selectionColor] is forwarded to every [BlockSelectionOverlay] and
-  /// [BlockRenderer] in the list.
-  ///
-  /// [onCustomEvent] receives every [CustomBlockEvent] emitted by a
-  /// third-party block plugin. When null, custom events are silently dropped.
-  ///
-  /// [variables] is the map used to resolve inline [VariableOp] embeds at
-  /// render time. It is threaded to all block renderers via [BlockEditorScope].
   const BlockEditorWidget({
     super.key,
     required this.controller,
@@ -48,6 +74,8 @@ class BlockEditorWidget extends StatefulWidget {
     this.selectionColor = const Color(0x443399FF),
     this.onCustomEvent,
     this.variables = const {},
+    this.toolbarBreakpoint = 768.0,
+    this.onColorPickerRequested,
   });
 
   /// The controller that owns the document and selection state.
@@ -69,15 +97,22 @@ class BlockEditorWidget extends StatefulWidget {
   final Color selectionColor;
 
   /// Called when a third-party block plugin emits a [CustomBlockEvent].
-  ///
-  /// When null, custom events are silently dropped.
   final void Function(CustomBlockEvent)? onCustomEvent;
 
   /// The variable resolution map for inline [VariableOp] embeds.
-  ///
-  /// Threaded to all block renderers via [BlockEditorScope]. The document
-  /// is never modified during variable resolution.
   final Map<String, String> variables;
+
+  /// The screen width threshold in logical pixels that determines the
+  /// formatting toolbar display mode. Defaults to 768.
+  final double toolbarBreakpoint;
+
+  /// Optional callback invoked when the user taps a color button in the
+  /// formatting toolbar.
+  ///
+  /// When null the built-in 12-swatch palette popover is shown. When
+  /// non-null this callback is awaited and its returned [Color] is applied
+  /// if non-null. See the class-level documentation for full usage details.
+  final Future<Color?> Function(Color? currentColor)? onColorPickerRequested;
 
   @override
   State<BlockEditorWidget> createState() => _BlockEditorWidgetState();
@@ -89,9 +124,24 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   late StreamSubscription<EditorSelection> _selectionSub;
   late FocusNode _focusNode;
   late EditorEditingOperations _ops;
+  late KeyboardShortcutHandler _shortcuts;
+  final GlobalKey _editorKey = GlobalKey();
+  final Map<String, GlobalKey> _blockKeys = {};
+  final OverlayPortalController _toolbarController = OverlayPortalController();
+  final OverlayPortalController _slashMenuController =
+      OverlayPortalController();
+  final OverlayPortalController _actionMenuController =
+      OverlayPortalController();
   ScrollController? _internalScrollController;
   TextInputConnection? _inputConnection;
   TextRange _composingRange = TextRange.empty;
+  bool _toolbarVisible = false;
+  bool _slashMenuVisible = false;
+  String? _slashTriggerBlockId;
+  int _slashTriggerOffset = 0;
+  bool _actionMenuVisible = false;
+  String? _actionMenuBlockId;
+  Offset _actionMenuPosition = Offset.zero;
 
   ScrollController get _scrollController =>
       widget.scrollController ?? _internalScrollController!;
@@ -100,6 +150,10 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   void initState() {
     super.initState();
     _ops = EditorEditingOperations(widget.controller);
+    _shortcuts = KeyboardShortcutHandler(
+      controller: widget.controller,
+      ops: _ops,
+    );
     _focusNode = FocusNode();
     _focusNode.addListener(_onFocusChange);
     if (widget.scrollController == null) {
@@ -110,10 +164,13 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       if (change.type != ChangeType.update) setState(() {});
       _syncIMEState();
     });
-    _selectionSub = widget.controller.selectionStream.listen((_) {
-      if (mounted) setState(() {});
+    _selectionSub = widget.controller.selectionStream.listen((sel) {
+      if (!mounted) return;
+      setState(() {});
       _syncIMEState();
+      _updateToolbarVisibility(sel);
     });
+    _updateToolbarVisibility(widget.controller.selection);
   }
 
   @override
@@ -121,6 +178,10 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
       _ops = EditorEditingOperations(widget.controller);
+      _shortcuts = KeyboardShortcutHandler(
+        controller: widget.controller,
+        ops: _ops,
+      );
       _changesSub.cancel();
       _selectionSub.cancel();
       _changesSub = widget.controller.changes.listen((change) {
@@ -128,9 +189,11 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
         if (change.type != ChangeType.update) setState(() {});
         _syncIMEState();
       });
-      _selectionSub = widget.controller.selectionStream.listen((_) {
-        if (mounted) setState(() {});
+      _selectionSub = widget.controller.selectionStream.listen((sel) {
+        if (!mounted) return;
+        setState(() {});
         _syncIMEState();
+        _updateToolbarVisibility(sel);
       });
     }
     if (oldWidget.scrollController != widget.scrollController) {
@@ -153,6 +216,71 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     _inputConnection?.close();
     _internalScrollController?.dispose();
     super.dispose();
+  }
+
+  void _updateToolbarVisibility(EditorSelection sel) {
+    if (widget.readOnly) {
+      if (_toolbarVisible) {
+        _toolbarController.hide();
+        setState(() => _toolbarVisible = false);
+      }
+      return;
+    }
+    final shouldShow = sel is ExpandedSelection;
+    if (shouldShow && !_toolbarVisible) {
+      _toolbarController.show();
+      setState(() => _toolbarVisible = true);
+    } else if (!shouldShow && _toolbarVisible) {
+      _toolbarController.hide();
+      setState(() => _toolbarVisible = false);
+    }
+  }
+
+  void _showSlashMenu({required String blockId, required int triggerOffset}) {
+    setState(() {
+      _slashTriggerBlockId = blockId;
+      _slashTriggerOffset = triggerOffset;
+      _slashMenuVisible = true;
+    });
+    _slashMenuController.show();
+  }
+
+  void _hideSlashMenu() {
+    if (!_slashMenuVisible) return;
+    _slashMenuController.hide();
+    setState(() {
+      _slashMenuVisible = false;
+      _slashTriggerBlockId = null;
+      _slashTriggerOffset = 0;
+    });
+  }
+
+  void _showActionMenu(String blockId, Offset globalPosition) {
+    setState(() {
+      _actionMenuBlockId = blockId;
+      _actionMenuPosition = globalPosition;
+      _actionMenuVisible = true;
+    });
+    _actionMenuController.show();
+  }
+
+  void _hideActionMenu() {
+    if (!_actionMenuVisible) return;
+    _actionMenuController.hide();
+    setState(() {
+      _actionMenuVisible = false;
+      _actionMenuBlockId = null;
+      _actionMenuPosition = Offset.zero;
+    });
+  }
+
+  GlobalKey _keyForBlock(String blockId) =>
+      _blockKeys.putIfAbsent(blockId, () => GlobalKey());
+
+  GlobalKey? _anchorKeyForSelection() {
+    final sel = widget.controller.selection;
+    if (sel is! ExpandedSelection) return null;
+    return _blockKeys[sel.anchor.blockId];
   }
 
   void _onFocusChange() {
@@ -213,7 +341,6 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     if (node == null) return;
     final currentText = node.delta?.plainText ?? '';
     final newText = value.text;
-
     if (newText != currentText) {
       _applyTextChange(
         blockId,
@@ -222,10 +349,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
         value.selection.baseOffset,
       );
     }
-
-    if (mounted) {
-      setState(() => _composingRange = value.composing);
-    }
+    if (mounted) setState(() => _composingRange = value.composing);
   }
 
   void _applyTextChange(
@@ -244,7 +368,6 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
         currentText[prefixLen] == newText[prefixLen]) {
       prefixLen++;
     }
-
     int suffixLen = 0;
     while (suffixLen < currentText.length - prefixLen &&
         suffixLen < newText.length - prefixLen &&
@@ -261,11 +384,9 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     );
 
     List<DeltaOp> ops = List.of(delta.ops);
-
     if (deleteEnd > deleteStart) {
       ops = _deleteRangeFromOps(ops, deleteStart, deleteEnd);
     }
-
     if (insertedText.isNotEmpty) {
       ops = _insertIntoOps(ops, deleteStart, insertedText);
     }
@@ -283,7 +404,6 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     final result = <DeltaOp>[];
     var cursor = 0;
     var inserted = false;
-
     for (final op in ops) {
       if (op is! TextOp) {
         if (!inserted && cursor == offset) {
@@ -291,6 +411,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
           inserted = true;
         }
         result.add(op);
+        cursor++;
         continue;
       }
       final opEnd = cursor + op.text.length;
@@ -311,7 +432,6 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       }
       cursor = opEnd;
     }
-
     if (!inserted) result.add(TextOp(text, attributes: attrs));
     return result;
   }
@@ -319,21 +439,19 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   List<DeltaOp> _deleteRangeFromOps(List<DeltaOp> ops, int start, int end) {
     final result = <DeltaOp>[];
     var cursor = 0;
-
     for (final op in ops) {
       if (op is! TextOp) {
-        result.add(op);
+        if (cursor < start || cursor >= end) result.add(op);
+        cursor++;
         continue;
       }
       final opStart = cursor;
       final opEnd = cursor + op.text.length;
       cursor = opEnd;
-
       if (opEnd <= start || opStart >= end) {
         result.add(op);
         continue;
       }
-
       final keepBefore = op.text.substring(
         0,
         (start - opStart).clamp(0, op.text.length),
@@ -341,7 +459,6 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       final keepAfter = op.text.substring(
         (end - opStart).clamp(0, op.text.length),
       );
-
       if (keepBefore.isNotEmpty) {
         result.add(TextOp(keepBefore, attributes: op.attributes));
       }
@@ -349,7 +466,6 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
         result.add(TextOp(keepAfter, attributes: op.attributes));
       }
     }
-
     return result;
   }
 
@@ -357,7 +473,10 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     if (offset == 0 || ops.isEmpty) return const InlineAttributes();
     var cursor = 0;
     for (final op in ops) {
-      if (op is! TextOp) continue;
+      if (op is! TextOp) {
+        cursor++;
+        continue;
+      }
       final opEnd = cursor + op.text.length;
       if (offset > cursor && offset <= opEnd) return op.attributes;
       cursor = opEnd;
@@ -368,23 +487,17 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
 
   @override
   void performAction(TextInputAction action) {
-    if (action == TextInputAction.newline) {
-      _ops.insertNewline();
-    }
+    if (action == TextInputAction.newline) _ops.insertNewline();
   }
 
   @override
   void performPrivateCommand(String action, Map<String, dynamic> data) {}
-
   @override
   void insertContent(KeyboardInsertedContent content) {}
-
   @override
   void updateFloatingCursor(RawFloatingCursorPoint point) {}
-
   @override
   void showAutocorrectionPromptRect(int start, int end) {}
-
   @override
   void connectionClosed() {
     _inputConnection = null;
@@ -392,20 +505,13 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   }
 
   @override
-  void didChangeInputControl(
-    TextInputControl? oldControl,
-    TextInputControl? newControl,
-  ) {}
-
+  void didChangeInputControl(TextInputControl? o, TextInputControl? n) {}
   @override
   void insertTextPlaceholder(Size size) {}
-
   @override
   void removeTextPlaceholder() {}
-
   @override
   void performSelector(String selectorName) {}
-
   @override
   void showToolbar() {}
 
@@ -447,102 +553,25 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (widget.readOnly) return KeyEventResult.ignored;
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
-
-    final isCmd =
-        HardwareKeyboard.instance.isMetaPressed ||
-        HardwareKeyboard.instance.isControlPressed;
-    final isShift = HardwareKeyboard.instance.isShiftPressed;
-    final isAlt = HardwareKeyboard.instance.isAltPressed;
-    final key = event.logicalKey;
-
-    if (isCmd && !isShift && key == LogicalKeyboardKey.keyA) {
-      widget.controller.selectAll();
-      return KeyEventResult.handled;
-    }
-    if (isCmd && !isShift && key == LogicalKeyboardKey.keyZ) {
-      widget.controller.undo();
-      return KeyEventResult.handled;
-    }
-    if ((isCmd && isShift && key == LogicalKeyboardKey.keyZ) ||
-        (isCmd && key == LogicalKeyboardKey.keyY)) {
-      widget.controller.redo();
-      return KeyEventResult.handled;
-    }
-    if (isCmd && key == LogicalKeyboardKey.keyB) {
-      _ops.applyBold();
-      return KeyEventResult.handled;
-    }
-    if (isCmd && key == LogicalKeyboardKey.keyI) {
-      _ops.applyItalic();
-      return KeyEventResult.handled;
-    }
-    if (isCmd && key == LogicalKeyboardKey.keyU) {
-      _ops.applyUnderline();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.escape) {
-      widget.controller.clearSelection();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.backspace) {
-      _ops.backspace();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.delete) {
-      _ops.delete();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.enter ||
-        key == LogicalKeyboardKey.numpadEnter) {
-      _ops.insertNewline();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.tab) {
-      isShift ? _ops.dedent() : _ops.indent();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.home) {
-      isCmd ? _ops.moveToDocumentStart() : _ops.moveToLineStart();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.end) {
-      isCmd ? _ops.moveToDocumentEnd() : _ops.moveToLineEnd();
-      return KeyEventResult.handled;
-    }
-    if (isAlt && key == LogicalKeyboardKey.arrowLeft) {
-      _ops.moveWordLeft();
-      return KeyEventResult.handled;
-    }
-    if (isAlt && key == LogicalKeyboardKey.arrowRight) {
-      _ops.moveWordRight();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.arrowLeft) {
-      _ops.moveWordLeft();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.arrowRight) {
-      _ops.moveWordRight();
-      return KeyEventResult.handled;
-    }
-
-    if (!isCmd && !isAlt && event.character != null) {
-      final char = event.character!;
-      if (char.isNotEmpty && !_isControlCharacter(char)) {
-        _ops.insertCharacter(char);
-        return KeyEventResult.handled;
-      }
-    }
-
-    return KeyEventResult.ignored;
+    final result = _shortcuts.handle(event, ModifierKeys.fromHardware());
+    if (result == KeyEventResult.handled) _checkSlashTrigger(event);
+    return result;
   }
 
-  bool _isControlCharacter(String char) {
-    final code = char.codeUnitAt(0);
-    return code < 32 || code == 127;
+  void _checkSlashTrigger(KeyEvent event) {
+    if (event.character != '/') return;
+    final sel = widget.controller.selection;
+    if (sel is! CollapsedSelection) return;
+    final blockId = sel.point.blockId;
+    final offset = sel.point.offset;
+    final node = widget.controller.document.findById(blockId);
+    if (node == null) return;
+    final text = node.delta?.plainText ?? '';
+    final isAtStart = offset == 1;
+    final isAfterSpace = offset >= 2 && text[offset - 2] == ' ';
+    if (isAtStart || isAfterSpace) {
+      _showSlashMenu(blockId: blockId, triggerOffset: offset);
+    }
   }
 
   bool _isFullyCovered(String blockId) {
@@ -550,8 +579,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     if (sel is! ExpandedSelection) return false;
     final covered = widget.controller.selectedBlockIds;
     if (covered.length < 3) return false;
-    final interior = covered.sublist(1, covered.length - 1);
-    return interior.contains(blockId);
+    return covered.sublist(1, covered.length - 1).contains(blockId);
   }
 
   int _resolveNumber(List<BlockNode> blocks, int index) {
@@ -568,7 +596,11 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
 
   EditorSelection _selectionForBlock(String blockId) {
     if (widget.readOnly) return EditorSelection.none;
-    return widget.controller.selection;
+    final sel = widget.controller.selection;
+    if (sel is! ExpandedSelection) return sel;
+    final ids = widget.controller.document.flatten().map((b) => b.id).toList();
+    final resolved = sel.resolveOrder(ids);
+    return ExpandedSelection(anchor: resolved.start, focus: resolved.end);
   }
 
   String? _focusedBlockId() {
@@ -577,17 +609,23 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     return null;
   }
 
+  double _editorWidth() {
+    final box = _editorKey.currentContext?.findRenderObject() as RenderBox?;
+    return box?.size.width ?? widget.toolbarBreakpoint;
+  }
+
   @override
   Widget build(BuildContext context) {
     final blocks = widget.controller.document.blocks;
     final focusedId = _focusedBlockId();
 
-    final content = ListView.builder(
+    final list = ListView.builder(
       controller: _scrollController,
       padding: widget.padding,
       itemCount: blocks.length,
       itemBuilder: (context, index) {
         final rawNode = blocks[index];
+        final blockKey = _keyForBlock(rawNode.id);
         final selection = _selectionForBlock(rawNode.id);
         final number = rawNode.type == BlockTypes.numberedList
             ? _resolveNumber(blocks, index)
@@ -598,8 +636,6 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
               )
             : rawNode;
         final covered = _isFullyCovered(rawNode.id);
-        final editorWidth =
-            MediaQuery.of(context).size.width - widget.padding.horizontal;
         final composing = focusedId == rawNode.id
             ? _composingRange
             : TextRange.empty;
@@ -618,17 +654,24 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
             blockId: rawNode.id,
             onEvent: _handleEvent,
             readOnly: widget.readOnly,
-            feedbackWidget: BlockGhost(node: rawNode, width: editorWidth),
-            child: _BlockItemWidget(
-              key: ValueKey(rawNode.id),
-              initialNode: node,
-              controller: widget.controller,
-              selection: selection,
-              covered: covered,
-              cursorColor: widget.cursorColor,
-              selectionColor: widget.selectionColor,
-              onEvent: _handleEvent,
-              composingRange: composing,
+            onActionMenuRequested: widget.readOnly ? null : _showActionMenu,
+            feedbackWidget: BlockGhost(
+              node: rawNode,
+              width: MediaQuery.of(context).size.width,
+            ),
+            child: KeyedSubtree(
+              key: blockKey,
+              child: _BlockItemWidget(
+                key: ValueKey(rawNode.id),
+                initialNode: node,
+                controller: widget.controller,
+                selection: selection,
+                covered: covered,
+                cursorColor: widget.cursorColor,
+                selectionColor: widget.selectionColor,
+                onEvent: _handleEvent,
+                composingRange: composing,
+              ),
             ),
           ),
         );
@@ -639,17 +682,54 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       return BlockEditorScope(
         variables: widget.variables,
         readOnly: true,
-        child: content,
+        child: list,
       );
     }
 
     return BlockEditorScope(
       variables: widget.variables,
       readOnly: false,
-      child: Focus(
-        focusNode: _focusNode,
-        onKeyEvent: _handleKeyEvent,
-        child: content,
+      child: OverlayPortal(
+        controller: _toolbarController,
+        overlayChildBuilder: (_) => FormattingToolbar(
+          controller: widget.controller,
+          ops: _ops,
+          anchorKey: _anchorKeyForSelection(),
+          editorKey: _editorKey,
+          toolbarBreakpoint: widget.toolbarBreakpoint,
+          availableWidth: _editorWidth(),
+          onColorPickerRequested: widget.onColorPickerRequested,
+        ),
+        child: OverlayPortal(
+          controller: _slashMenuController,
+          overlayChildBuilder: (_) => SlashCommandMenu(
+            controller: widget.controller,
+            ops: _ops,
+            anchorKey: _slashTriggerBlockId != null
+                ? _blockKeys[_slashTriggerBlockId]
+                : null,
+            editorKey: _editorKey,
+            editorFocusNode: _focusNode,
+            triggerBlockId: _slashTriggerBlockId ?? '',
+            triggerOffset: _slashTriggerOffset,
+            onDismiss: _hideSlashMenu,
+          ),
+          child: OverlayPortal(
+            controller: _actionMenuController,
+            overlayChildBuilder: (_) => BlockActionMenu(
+              controller: widget.controller,
+              blockId: _actionMenuBlockId ?? '',
+              globalPosition: _actionMenuPosition,
+              onDismiss: _hideActionMenu,
+            ),
+            child: Focus(
+              key: _editorKey,
+              focusNode: _focusNode,
+              onKeyEvent: _handleKeyEvent,
+              child: list,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -1,6 +1,6 @@
 library;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
 
 /// [BlockPlugin] for [BlockTypes.callout].
@@ -13,8 +13,9 @@ import 'package:block_editor/block_editor.dart';
 /// [RichTextRenderer].
 ///
 /// Colours, icons, and border radius are read from [CalloutBlockConfig] via
-/// [BlockEditorScope]. When no config is present the block uses internal
-/// defaults for each variant.
+/// [BlockEditorScope]. When config values are null, falls back to
+/// [Theme.of(context).colorScheme] so the block responds correctly to both
+/// light and dark themes.
 final class CalloutBlock extends BlockPlugin {
   /// Creates a [CalloutBlock].
   CalloutBlock();
@@ -45,7 +46,7 @@ final class CalloutBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Callout',
     group: 'Basic',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.info_outline),
     onSelected: () {},
   );
 
@@ -64,24 +65,24 @@ class _CalloutBlockWidget extends StatelessWidget {
   final EditorSelection selection;
   final void Function(BlockEvent) onEvent;
 
-  static const Color _infoColor = Color(0xFFEBF5FB);
-  static const Color _warningColor = Color(0xFFFEF9E7);
-  static const Color _errorColor = Color(0xFFFDECEC);
-
-  static const Widget _infoIcon = Text('ℹ️');
-  static const Widget _warningIcon = Text('⚠️');
-  static const Widget _errorIcon = Text('🚫');
+  static const Widget _infoIcon = Icon(Icons.info);
+  static const Widget _warningIcon = Icon(Icons.warning);
+  static const Widget _errorIcon = Icon(Icons.error);
 
   String get _variant => node.attributes['variant'] as String? ?? 'info';
 
-  Color _resolveColor(CalloutBlockConfig? config) {
+  Color _resolveColor(BuildContext context, CalloutBlockConfig? config) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     switch (_variant) {
       case 'warning':
-        return config?.warningColor ?? _warningColor;
+        return config?.warningColor ??
+            (isDark ? const Color(0xFF3D2E00) : const Color(0xFFFFF8E1));
       case 'error':
-        return config?.errorColor ?? _errorColor;
+        return config?.errorColor ??
+            (isDark ? const Color(0xFF3D0000) : const Color(0xFFFFEBEE));
       default:
-        return config?.infoColor ?? _infoColor;
+        return config?.infoColor ??
+            (isDark ? const Color(0xFF00213D) : const Color(0xFFE3F2FD));
     }
   }
 
@@ -99,7 +100,7 @@ class _CalloutBlockWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final config = BlockEditorScope.maybeOf(context)?.calloutConfig;
-    final color = _resolveColor(config);
+    final color = _resolveColor(context, config);
     final icon = _resolveIcon(config);
     final borderRadius =
         config?.borderRadius ?? const BorderRadius.all(Radius.circular(6));
@@ -116,14 +117,17 @@ class _CalloutBlockWidget extends StatelessWidget {
             child: icon,
           ),
           Expanded(
-            child: GestureDetector(
-              onTapDown: (details) =>
-                  onEvent(TapEvent(blockId: node.id, offset: 0)),
-              child: RichTextRenderer(
-                delta: delta,
-                blockId: node.id,
-                selection: selection,
-                baseStyle: const TextStyle(fontSize: 15),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.text,
+              child: GestureDetector(
+                onTapDown: (details) =>
+                    onEvent(TapEvent(blockId: node.id, offset: 0)),
+                child: RichTextRenderer(
+                  delta: delta,
+                  blockId: node.id,
+                  selection: selection,
+                  baseStyle: const TextStyle(fontSize: 15),
+                ),
               ),
             ),
           ),

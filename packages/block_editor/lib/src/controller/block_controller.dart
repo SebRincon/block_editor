@@ -285,6 +285,25 @@ final class BlockController {
     );
   }
 
+  /// Inserts a copy of the block identified by [blockId] immediately below it.
+  ///
+  /// The duplicate is a new [BlockNode] with a fresh UUID, identical type,
+  /// attributes, children, and delta to the original. Does nothing when
+  /// no block with [blockId] exists in the document.
+  void duplicate(String blockId) {
+    final blocks = document.blocks;
+    final index = blocks.indexWhere((b) => b.id == blockId);
+    if (index < 0) return;
+    final original = blocks[index];
+    final copy = BlockNode(
+      type: original.type,
+      attributes: Map.of(original.attributes),
+      children: List.of(original.children),
+      delta: original.delta,
+    );
+    insertAt(index + 1, copy);
+  }
+
   /// Whether the undo stack has any steps to revert.
   bool get canUndo => _undoStack.length > 1;
 

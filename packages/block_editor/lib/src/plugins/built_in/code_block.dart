@@ -1,6 +1,6 @@
 library;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
 
 /// [BlockPlugin] for [BlockTypes.code].
@@ -44,7 +44,7 @@ final class CodeBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Code',
     group: 'Basic',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.code),
     onSelected: () {},
   );
 

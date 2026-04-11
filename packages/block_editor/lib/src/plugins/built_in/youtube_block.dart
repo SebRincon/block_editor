@@ -1,6 +1,6 @@
 library;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
 
 /// [BlockPlugin] for [BlockTypes.youtube].
@@ -41,7 +41,7 @@ final class YouTubeBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'YouTube',
     group: 'Media',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.ondemand_video),
     onSelected: () {},
   );
 
@@ -70,13 +70,14 @@ class _YouTubeBlockWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final config = BlockEditorScope.maybeOf(context)?.youTubeConfig;
-    final privacyEnhanced = config?.privacyEnhanced ?? true;
+    final privacyEnhanced = config?.privacyEnhanced ?? false;
 
     if (_videoId.isEmpty) {
       return _placeholder();
     }
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => onEvent(
         CustomBlockEvent(
           blockId: node.id,
@@ -86,6 +87,7 @@ class _YouTubeBlockWidget extends StatelessWidget {
       ),
       child: Container(
         height: _defaultHeight,
+        width: double.infinity,
         color: _defaultBackground,
         child: Stack(
           alignment: Alignment.center,
@@ -108,7 +110,7 @@ class _YouTubeBlockWidget extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
-                  IconData(0xe037, fontFamily: 'MaterialIcons'),
+                  Icons.play_arrow,
                   color: _foreground,
                   size: 24,
                 ),

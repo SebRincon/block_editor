@@ -1,6 +1,6 @@
 library;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
 
 /// [BlockPlugin] for [BlockTypes.link].
@@ -42,7 +42,7 @@ final class LinkBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Link',
     group: 'Basic',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.link),
     onSelected: () {},
   );
 

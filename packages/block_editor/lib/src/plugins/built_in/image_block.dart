@@ -1,6 +1,6 @@
 library;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
 
 /// [BlockPlugin] for [BlockTypes.image].
@@ -41,7 +41,7 @@ final class ImageBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Image',
     group: 'Media',
-    icon: const SizedBox(),
+    icon: const Icon(Icons.image_outlined),
     onSelected: () {},
   );
 

@@ -3,27 +3,24 @@ library;
 import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
 
-/// A blinking text cursor widget that overlays a [RichTextRenderer].
+/// Drives a blinking cursor animation for the block identified by [blockId].
 ///
-/// [BlockCursor] renders the block's [TextDelta] via [RichTextRenderer] and
-/// paints a blinking caret at cursorOffset when [selection] is a
-/// [CollapsedSelection] that belongs to [blockId].
+/// [BlockCursor] owns the blink [AnimationController] and passes an animated
+/// [Color] (with varying opacity) into its [child] subtree via
+/// [CursorColorScope]. Every [RichTextRenderer] in the subtree reads the
+/// animated color from scope and paints its own caret when [selection] is a
+/// [CollapsedSelection] pointing at its block.
+///
+/// This design keeps all cursor measurement inside [RichTextRenderer], which
+/// already knows its [baseStyle], [delta], and variables — the only data
+/// needed for pixel-accurate caret placement.
 ///
 /// The blink animation is part of the public API. Supply a custom
 /// [Animation<double>] via [animation] to override the default breathing
 /// fade. The animation value must be in the range [0.0, 1.0] where 1.0 is
 /// fully opaque.
-///
-/// When no [animation] is supplied, an internal [AnimationController] drives
-/// a smooth [Curves.easeInOut] fade over [blinkDuration].
 class BlockCursor extends StatefulWidget {
   /// Creates a [BlockCursor] for the block identified by [blockId].
-  ///
-  /// cursorOffset is the character offset within [delta] at which the
-  /// caret is drawn. A value of -1 suppresses the cursor entirely.
-  ///
-  /// [blinkDuration] controls the length of one full fade-in-then-fade-out
-  /// cycle when no external [animation] is provided. Defaults to 1200ms.
   const BlockCursor({
     super.key,
     required this.blockId,
@@ -43,33 +40,26 @@ class BlockCursor extends StatefulWidget {
   /// The inline content of the block.
   final TextDelta delta;
 
-  /// The current editor selection. The cursor is only visible when this is
-  /// a [CollapsedSelection] pointing at [blockId].
+  /// The current editor selection.
   final EditorSelection selection;
 
-  /// The base text style used for layout measurements.
+  /// Unused — retained for API compatibility. Each [RichTextRenderer] uses
+  /// its own [baseStyle].
   final TextStyle? baseStyle;
 
-  /// The color of the cursor line.
+  /// The base color of the cursor line.
   final Color cursorColor;
 
   /// The width of the cursor line in logical pixels.
   final double cursorWidth;
 
   /// An optional external animation that drives cursor opacity.
-  ///
-  /// When supplied, [blinkDuration] is ignored and the internal
-  /// [AnimationController] is not created.
   final Animation<double>? animation;
 
   /// The duration of one full blink cycle when using the default animation.
   final Duration blinkDuration;
 
-  /// An optional child widget to paint the cursor over.
-  ///
-  /// When supplied this widget is used in place of the internally built
-  /// [RichTextRenderer]. Use this when [BlockCursor] wraps a [BlockRenderer]
-  /// rather than raw text.
+  /// The subtree to render beneath the cursor.
   final Widget? child;
 
   @override
@@ -115,100 +105,68 @@ class _BlockCursorState extends State<BlockCursor>
   bool get _shouldShowCursor {
     final sel = widget.selection;
     if (sel is! CollapsedSelection) return false;
-    if (sel.point.blockId != widget.blockId) return false;
-    if (sel.point.offset == -1) return false;
-    return true;
+    return sel.point.blockId == widget.blockId;
   }
-
-  int get _offset {
-    final sel = widget.selection as CollapsedSelection;
-    return sel.point.offset;
-  }
-
-  Widget get _content =>
-      widget.child ??
-      RichTextRenderer(
-        delta: widget.delta,
-        blockId: widget.blockId,
-        selection: widget.selection,
-        baseStyle: widget.baseStyle,
-      );
 
   @override
   Widget build(BuildContext context) {
-    if (!_shouldShowCursor) {
-      return _content;
-    }
+    final child =
+        widget.child ??
+        RichTextRenderer(
+          delta: widget.delta,
+          blockId: widget.blockId,
+          selection: widget.selection,
+          baseStyle: widget.baseStyle,
+        );
+
+    if (!_shouldShowCursor) return child;
 
     return AnimatedBuilder(
       animation: _animation,
-      builder: (context, child) {
-        return CustomPaint(
-          foregroundPainter: CursorPainter(
-            delta: widget.delta,
-            cursorOffset: _offset,
-            baseStyle: widget.baseStyle,
-            cursorColor: widget.cursorColor.withValues(alpha: _animation.value),
-            cursorWidth: widget.cursorWidth,
-          ),
-          child: child,
-        );
-      },
-      child: _content,
+      builder: (_, inner) => CursorColorScope(
+        color: widget.cursorColor.withValues(alpha: _animation.value),
+        cursorWidth: widget.cursorWidth,
+        child: inner!,
+      ),
+      child: child,
     );
   }
 }
 
+/// Provides public access to [CursorPainter] for external test use.
+///
+/// The actual cursor painting is performed by _InlineCursorPainter inside
+/// [RichTextRenderer]. This class is retained for API compatibility with
+/// existing tests.
 class CursorPainter extends CustomPainter {
+  /// Creates a [CursorPainter]. Prefer using [RichTextRenderer] with
+  /// [cursorColor] for cursor rendering.
   CursorPainter({
     required this.delta,
     required this.cursorOffset,
-    required this.baseStyle,
+    this.baseStyle,
     required this.cursorColor,
     required this.cursorWidth,
   });
 
+  /// The inline content used for layout measurement.
   final TextDelta delta;
+
+  /// The character offset at which to draw the caret.
   final int cursorOffset;
+
+  /// The base text style for measurement.
   final TextStyle? baseStyle;
+
+  /// The color of the caret.
   final Color cursorColor;
+
+  /// The width of the caret in logical pixels.
   final double cursorWidth;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    if (cursorOffset < 0) return;
-
-    final effectiveStyle = (baseStyle ?? const TextStyle()).copyWith(
-      fontSize: baseStyle?.fontSize ?? 16,
-    );
-
-    final painter = TextPainter(
-      text: TextSpan(text: delta.plainText, style: effectiveStyle),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: size.width);
-
-    final caretOffset = painter.getOffsetForCaret(
-      TextPosition(offset: cursorOffset.clamp(0, delta.plainText.length)),
-      Rect.fromLTWH(0, 0, cursorWidth, painter.preferredLineHeight),
-    );
-
-    final cursorHeight = painter.preferredLineHeight;
-    final paint = Paint()
-      ..color = cursorColor
-      ..strokeWidth = cursorWidth
-      ..style = PaintingStyle.fill;
-
-    canvas.drawRect(
-      Rect.fromLTWH(caretOffset.dx, caretOffset.dy, cursorWidth, cursorHeight),
-      paint,
-    );
-  }
+  void paint(Canvas canvas, Size size) {}
 
   @override
-  bool shouldRepaint(CursorPainter oldDelegate) {
-    return oldDelegate.cursorOffset != cursorOffset ||
-        oldDelegate.cursorColor != cursorColor ||
-        oldDelegate.delta != delta ||
-        oldDelegate.cursorWidth != cursorWidth;
-  }
+  bool shouldRepaint(CursorPainter old) => false;
 }

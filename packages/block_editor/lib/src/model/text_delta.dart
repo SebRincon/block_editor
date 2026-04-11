@@ -23,10 +23,22 @@ final class TextDelta {
 
   final List<DeltaOp> ops;
 
+  /// Returns the plain-text representation of this delta.
+  ///
+  /// Each [TextOp] contributes its text verbatim. Each [VariableOp] and
+  /// [TagOp] contributes a single Unicode object-replacement character
+  /// `'\uFFFC'`, so that every embed op counts as exactly one logical
+  /// character in all offset calculations. This keeps the model-layer offset
+  /// system consistent with the render layer regardless of how many visible
+  /// characters an embed renders as.
   String get plainText {
     final buffer = StringBuffer();
     for (final op in ops) {
-      if (op is TextOp) buffer.write(op.text);
+      if (op is TextOp) {
+        buffer.write(op.text);
+      } else if (op is VariableOp || op is TagOp) {
+        buffer.write('\uFFFC');
+      }
     }
     return buffer.toString();
   }
@@ -41,12 +53,29 @@ final class TextDelta {
 
   TextDelta applyAttributes(int start, int end, InlineAttributes attributes) {
     assert(start >= 0 && end >= start, 'Invalid range [$start, $end)');
+
+    final allBold =
+        attributes.bold != null && _allHave(start, end, (a) => a.bold == true);
+    final allItalic =
+        attributes.italic != null &&
+        _allHave(start, end, (a) => a.italic == true);
+    final allUnderline =
+        attributes.underline != null &&
+        _allHave(start, end, (a) => a.underline == true);
+    final allStrikethrough =
+        attributes.strikethrough != null &&
+        _allHave(start, end, (a) => a.strikethrough == true);
+    final allInlineCode =
+        attributes.inlineCode != null &&
+        _allHave(start, end, (a) => a.inlineCode == true);
+
     final result = <DeltaOp>[];
     var cursor = 0;
 
     for (final op in ops) {
       if (op is! TextOp) {
         result.add(op);
+        cursor++;
         continue;
       }
       final opStart = cursor;
@@ -72,20 +101,27 @@ final class TextDelta {
         result.add(TextOp(before, attributes: op.attributes));
       }
       if (inside.isNotEmpty) {
+        final a = op.attributes;
         result.add(
           TextOp(
             inside,
-            attributes: op.attributes.copyWith(
-              bold: attributes.bold ?? op.attributes.bold,
-              italic: attributes.italic ?? op.attributes.italic,
-              underline: attributes.underline ?? op.attributes.underline,
-              strikethrough:
-                  attributes.strikethrough ?? op.attributes.strikethrough,
-              inlineCode: attributes.inlineCode ?? op.attributes.inlineCode,
-              link: attributes.link ?? op.attributes.link,
-              color: attributes.color ?? op.attributes.color,
-              backgroundColor:
-                  attributes.backgroundColor ?? op.attributes.backgroundColor,
+            attributes: InlineAttributes(
+              bold: attributes.bold != null ? (allBold ? null : true) : a.bold,
+              italic: attributes.italic != null
+                  ? (allItalic ? null : true)
+                  : a.italic,
+              underline: attributes.underline != null
+                  ? (allUnderline ? null : true)
+                  : a.underline,
+              strikethrough: attributes.strikethrough != null
+                  ? (allStrikethrough ? null : true)
+                  : a.strikethrough,
+              inlineCode: attributes.inlineCode != null
+                  ? (allInlineCode ? null : true)
+                  : a.inlineCode,
+              link: attributes.link ?? a.link,
+              color: attributes.color ?? a.color,
+              backgroundColor: attributes.backgroundColor ?? a.backgroundColor,
             ),
           ),
         );
@@ -98,6 +134,24 @@ final class TextDelta {
     return TextDelta(_normalize(result));
   }
 
+  bool _allHave(int start, int end, bool Function(InlineAttributes) test) {
+    var cursor = 0;
+    var foundAny = false;
+    for (final op in ops) {
+      if (op is! TextOp) {
+        cursor++;
+        continue;
+      }
+      final opStart = cursor;
+      final opEnd = cursor + op.text.length;
+      cursor = opEnd;
+      if (opEnd <= start || opStart >= end) continue;
+      foundAny = true;
+      if (!test(op.attributes)) return false;
+    }
+    return foundAny;
+  }
+
   TextDelta slice(int start, int end) {
     assert(start >= 0 && end >= start, 'Invalid range [$start, $end)');
     final result = <DeltaOp>[];
@@ -105,6 +159,7 @@ final class TextDelta {
 
     for (final op in ops) {
       if (op is! TextOp) {
+        if (cursor >= start && cursor < end) result.add(op);
         cursor++;
         continue;
       }

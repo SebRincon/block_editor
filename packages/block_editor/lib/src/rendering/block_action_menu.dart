@@ -126,6 +126,7 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
   @override
   Widget build(BuildContext context) {
     const mainMenuHeight = 5 * 40.0 + 8.0;
+    final editorTheme = BlockEditorThemeData.fromContext(context);
     final pos = _clampedPosition(
       context,
       widget.globalPosition,
@@ -156,7 +157,12 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
             onKeyEvent: _handleKey,
             child: Material(
               elevation: 6,
-              borderRadius: BorderRadius.circular(8),
+              color: editorTheme.popover,
+              shadowColor: Colors.black.withValues(alpha: 0.20),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(editorTheme.radiusMd),
+                side: BorderSide(color: editorTheme.border),
+              ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Column(
@@ -176,10 +182,10 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
                     _ActionItem(
                       icon: Icons.transform_outlined,
                       label: 'Turn into',
-                      trailing: const Icon(
+                      trailing: Icon(
                         Icons.chevron_right,
                         size: 16,
-                        color: Color(0xFF888888),
+                        color: editorTheme.mutedForeground,
                       ),
                       onTap: () =>
                           setState(() => _showTurnInto = !_showTurnInto),
@@ -212,7 +218,12 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
             width: _turnIntoWidth,
             child: Material(
               elevation: 6,
-              borderRadius: BorderRadius.circular(8),
+              color: editorTheme.popover,
+              shadowColor: Colors.black.withValues(alpha: 0.20),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(editorTheme.radiusMd),
+                side: BorderSide(color: editorTheme.border),
+              ),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 300),
                 child: ListView(
@@ -273,12 +284,12 @@ class _ActionItemState extends State<_ActionItem> {
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme;
+    final editorTheme = BlockEditorThemeData.fromContext(context);
     final textColor = widget.isDestructive
-        ? const Color(0xFFD32F2F)
+        ? editorTheme.destructive
         : widget.enabled
-        ? color.onSurface
-        : const Color(0xFF888888);
+        ? editorTheme.popoverForeground
+        : editorTheme.mutedForeground.withValues(alpha: 0.55);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -292,12 +303,12 @@ class _ActionItemState extends State<_ActionItem> {
         child: AnimatedContainer(
           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(editorTheme.radiusMd),
             color: widget.enabled
                 ? _hovered
-                      ? color.inverseSurface.withValues(alpha: 0.10)
-                      : color.surface.withValues(alpha: 0.0)
-                : color.surface.withValues(alpha: 0.0),
+                      ? editorTheme.accent
+                      : Colors.transparent
+                : Colors.transparent,
           ),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           duration: const Duration(milliseconds: 150),
@@ -314,10 +325,10 @@ class _ActionItemState extends State<_ActionItem> {
               Expanded(
                 child: Text(
                   widget.label,
-                  style: TextStyle(fontSize: 14, color: textColor),
+                  style: editorTheme.smallStyle.copyWith(color: textColor),
                 ),
               ),
-              ?widget.trailing,
+              if (widget.trailing != null) widget.trailing!,
             ],
           ),
         ),

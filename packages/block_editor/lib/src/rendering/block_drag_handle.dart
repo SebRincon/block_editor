@@ -62,6 +62,7 @@ class _BlockDragHandleState extends State<BlockDragHandle> {
   Widget build(BuildContext context) {
     final availableWidth = MediaQuery.of(context).size.width;
     final tooNarrow = availableWidth < 600;
+    final editorTheme = BlockEditorThemeData.fromContext(context);
 
     if (widget.readOnly || tooNarrow) {
       return widget.child;
@@ -84,7 +85,10 @@ class _BlockDragHandleState extends State<BlockDragHandle> {
           child: AnimatedOpacity(
             opacity: _hovering ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 150),
-            child: const Icon(Icons.drag_indicator, color: Color(0xFF999999)),
+            child: Icon(
+              Icons.drag_indicator,
+              color: editorTheme.mutedForeground,
+            ),
           ),
         ),
       ),
@@ -179,12 +183,13 @@ class _DropIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
     return Container(
       height: 2,
       margin: const EdgeInsets.symmetric(vertical: 2),
       decoration: BoxDecoration(
-        color: const Color(0xFF2196F3),
-        borderRadius: BorderRadius.circular(1),
+        color: editorTheme.primary,
+        borderRadius: BorderRadius.circular(editorTheme.radiusXs),
       ),
     );
   }
@@ -208,11 +213,17 @@ class BlockGhost extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
     return SizedBox(
       width: width,
       child: Material(
         elevation: 4,
-        borderRadius: BorderRadius.circular(4),
+        color: editorTheme.popover,
+        shadowColor: Colors.black.withValues(alpha: 0.20),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(editorTheme.radiusSm),
+          side: BorderSide(color: editorTheme.border),
+        ),
         child: Opacity(
           opacity: 0.8,
           child: Padding(

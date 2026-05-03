@@ -19,8 +19,8 @@ class RichTextRenderer extends StatelessWidget {
     required this.blockId,
     this.baseStyle,
     this.selection = EditorSelection.none,
-    this.selectionColor = const Color(0x443399FF),
-    this.inlineCodeColor = const Color(0xFFEEEEEE),
+    this.selectionColor,
+    this.inlineCodeColor,
     this.textAlign = TextAlign.start,
     this.composingRange,
     this.cursorColor,
@@ -40,10 +40,10 @@ class RichTextRenderer extends StatelessWidget {
   final EditorSelection selection;
 
   /// Background color applied to selected character ranges.
-  final Color selectionColor;
+  final Color? selectionColor;
 
   /// Background color applied to inline code runs.
-  final Color inlineCodeColor;
+  final Color? inlineCodeColor;
 
   /// How the text should be aligned horizontally.
   final TextAlign textAlign;
@@ -61,15 +61,18 @@ class RichTextRenderer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final variables = BlockEditorScope.maybeOf(context)?.variables ?? const {};
-    final spans = _buildSpans(variables);
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final effectiveBase = resolveBlockEditorTextStyle(context, baseStyle);
+    final textDirection = Directionality.of(context);
+    final textScaler = MediaQuery.textScalerOf(context);
+    final spans = _buildSpans(variables, editorTheme);
     final textWidget = Text.rich(
-      TextSpan(style: baseStyle, children: spans),
+      TextSpan(style: effectiveBase, children: spans),
       textAlign: textAlign,
+      textDirection: textDirection,
+      textScaler: textScaler,
       semanticsLabel: delta.plainText,
-      textHeightBehavior: const TextHeightBehavior(
-        applyHeightToFirstAscent: false,
-        applyHeightToLastDescent: false,
-      ),
+      textHeightBehavior: blockEditorTextHeightBehavior,
     );
 
     final sel = selection;
@@ -84,8 +87,7 @@ class RichTextRenderer extends StatelessWidget {
     final activeCursorColor = cursorColor ?? scope?.color;
     if (activeCursorColor == null) return textWidget;
 
-    final effectiveBase = baseStyle ?? const TextStyle(fontSize: 16);
-    final effectiveCursorWidth = (scope?.cursorWidth ?? cursorWidth) - 1.0;
+    final effectiveCursorWidth = scope?.cursorWidth ?? cursorWidth;
     final cursorOff = (sel).point.offset;
 
     return LayoutBuilder(
@@ -106,6 +108,9 @@ class RichTextRenderer extends StatelessWidget {
                     cursorColor: activeCursorColor,
                     cursorWidth: effectiveCursorWidth,
                     textWidth: textWidth,
+                    textAlign: textAlign,
+                    textDirection: textDirection,
+                    textScaler: textScaler,
                   ),
                 ),
               ),
@@ -116,11 +121,15 @@ class RichTextRenderer extends StatelessWidget {
     );
   }
 
-  List<TextSpan> _buildSpans(Map<String, String> variables) {
+  List<TextSpan> _buildSpans(
+    Map<String, String> variables,
+    BlockEditorThemeData editorTheme,
+  ) {
     final spans = <TextSpan>[];
     var offset = 0;
 
     final selRange = _resolvedSelectionRange();
+    final activeSelectionColor = selectionColor ?? editorTheme.selection;
 
     for (final op in delta.ops) {
       if (op is VariableOp) {
@@ -129,13 +138,13 @@ class RichTextRenderer extends StatelessWidget {
         final opEnd = offset + 1;
         final highlight =
             selRange != null && opStart >= selRange.$1 && opEnd <= selRange.$2
-            ? selectionColor
+            ? activeSelectionColor
             : null;
         spans.add(
           TextSpan(
             text: resolved,
             style: TextStyle(
-              color: const Color(0xFF8B5CF6),
+              color: editorTheme.variable,
               backgroundColor: highlight,
             ),
           ),
@@ -148,13 +157,13 @@ class RichTextRenderer extends StatelessWidget {
         final opEnd = offset + 1;
         final highlight =
             selRange != null && opStart >= selRange.$1 && opEnd <= selRange.$2
-            ? selectionColor
+            ? activeSelectionColor
             : null;
         spans.add(
           TextSpan(
             text: '#${op.tag}',
             style: TextStyle(
-              color: const Color(0xFF0EA5E9),
+              color: editorTheme.tag,
               backgroundColor: highlight,
             ),
           ),
@@ -171,7 +180,7 @@ class RichTextRenderer extends StatelessWidget {
       final opEnd = offset + length;
       if (composingRange != null &&
           _overlaps(opStart, opEnd, composingRange!)) {
-        spans.addAll(_buildSpansWithComposing(op, opStart, opEnd));
+        spans.addAll(_buildSpansWithComposing(op, opStart, opEnd, editorTheme));
       } else if (selRange != null &&
           _overlaps(
             opStart,
@@ -185,10 +194,11 @@ class RichTextRenderer extends StatelessWidget {
             opEnd,
             selRange.$1,
             selRange.$2,
+            editorTheme,
           ),
         );
       } else {
-        spans.add(_buildSpan(op, opStart, opEnd));
+        spans.add(_buildSpan(op, opStart, opEnd, editorTheme));
       }
       offset = opEnd;
     }
@@ -228,6 +238,7 @@ class RichTextRenderer extends StatelessWidget {
     int opEnd,
     int selStart,
     int selEnd,
+    BlockEditorThemeData editorTheme,
   ) {
     final result = <TextSpan>[];
     final clipStart = selStart.clamp(opStart, opEnd);
@@ -241,6 +252,7 @@ class RichTextRenderer extends StatelessWidget {
           ),
           opStart,
           clipStart,
+          editorTheme,
         ),
       );
     }
@@ -249,8 +261,10 @@ class RichTextRenderer extends StatelessWidget {
         op.text.substring(clipStart - opStart, clipEnd - opStart),
         attributes: op.attributes,
       );
-      var style = _spanStyle(selected);
-      style = style.copyWith(backgroundColor: selectionColor);
+      var style = _spanStyle(selected, editorTheme);
+      style = style.copyWith(
+        backgroundColor: selectionColor ?? editorTheme.selection,
+      );
       result.add(TextSpan(text: selected.text, style: style));
     }
     if (clipEnd < opEnd) {
@@ -262,13 +276,14 @@ class RichTextRenderer extends StatelessWidget {
           ),
           clipEnd,
           opEnd,
+          editorTheme,
         ),
       );
     }
     return result;
   }
 
-  TextStyle _spanStyle(TextOp op) {
+  TextStyle _spanStyle(TextOp op, BlockEditorThemeData editorTheme) {
     final attrs = op.attributes;
     final isCode = attrs.inlineCode ?? false;
     final isLink = attrs.link != null;
@@ -277,15 +292,20 @@ class RichTextRenderer extends StatelessWidget {
       fontStyle: (attrs.italic ?? false) ? FontStyle.italic : null,
       decoration: _buildDecoration(attrs),
       fontFamily: isCode ? 'monospace' : null,
-      backgroundColor: _resolveBackgroundColor(attrs),
-      color: _resolveColor(attrs, isLink),
+      backgroundColor: _resolveBackgroundColor(attrs, editorTheme),
+      color: _resolveColor(attrs, isLink, editorTheme),
     );
   }
 
   bool _overlaps(int opStart, int opEnd, TextRange range) =>
       opStart < range.end && opEnd > range.start;
 
-  List<TextSpan> _buildSpansWithComposing(TextOp op, int opStart, int opEnd) {
+  List<TextSpan> _buildSpansWithComposing(
+    TextOp op,
+    int opStart,
+    int opEnd,
+    BlockEditorThemeData editorTheme,
+  ) {
     final range = composingRange!;
     final compStart = range.start.clamp(opStart, opEnd);
     final compEnd = range.end.clamp(opStart, opEnd);
@@ -299,6 +319,7 @@ class RichTextRenderer extends StatelessWidget {
           ),
           opStart,
           compStart,
+          editorTheme,
         ),
       );
     }
@@ -311,6 +332,7 @@ class RichTextRenderer extends StatelessWidget {
           ),
           compStart,
           compEnd,
+          editorTheme,
         ),
       );
     }
@@ -323,13 +345,19 @@ class RichTextRenderer extends StatelessWidget {
           ),
           compEnd,
           opEnd,
+          editorTheme,
         ),
       );
     }
     return result;
   }
 
-  TextSpan _buildSpanWithComposingUnderline(TextOp op, int start, int end) {
+  TextSpan _buildSpanWithComposingUnderline(
+    TextOp op,
+    int start,
+    int end,
+    BlockEditorThemeData editorTheme,
+  ) {
     final attrs = op.attributes;
     final isCode = attrs.inlineCode ?? false;
     final isLink = attrs.link != null;
@@ -343,13 +371,18 @@ class RichTextRenderer extends StatelessWidget {
       fontStyle: (attrs.italic ?? false) ? FontStyle.italic : null,
       decoration: TextDecoration.combine(decorations),
       fontFamily: isCode ? 'monospace' : null,
-      backgroundColor: _resolveBackgroundColor(attrs),
-      color: _resolveColor(attrs, isLink),
+      backgroundColor: _resolveBackgroundColor(attrs, editorTheme),
+      color: _resolveColor(attrs, isLink, editorTheme),
     );
     return TextSpan(text: op.text, style: style);
   }
 
-  TextSpan _buildSpan(TextOp op, int start, int end) {
+  TextSpan _buildSpan(
+    TextOp op,
+    int start,
+    int end,
+    BlockEditorThemeData editorTheme,
+  ) {
     final attrs = op.attributes;
     final isCode = attrs.inlineCode ?? false;
     final isLink = attrs.link != null;
@@ -358,8 +391,8 @@ class RichTextRenderer extends StatelessWidget {
       fontStyle: (attrs.italic ?? false) ? FontStyle.italic : null,
       decoration: _buildDecoration(attrs),
       fontFamily: isCode ? 'monospace' : null,
-      backgroundColor: _resolveBackgroundColor(attrs),
-      color: _resolveColor(attrs, isLink),
+      backgroundColor: _resolveBackgroundColor(attrs, editorTheme),
+      color: _resolveColor(attrs, isLink, editorTheme),
     );
     return TextSpan(text: op.text, style: style);
   }
@@ -372,17 +405,24 @@ class RichTextRenderer extends StatelessWidget {
     return TextDecoration.combine(d);
   }
 
-  Color? _resolveColor(InlineAttributes attrs, bool isLink) {
+  Color? _resolveColor(
+    InlineAttributes attrs,
+    bool isLink,
+    BlockEditorThemeData editorTheme,
+  ) {
     if (attrs.color != null) {
       return Color(int.parse(attrs.color!.replaceFirst('#', '0xFF')));
     }
-    if (isLink) return const Color(0xFF0070F3);
+    if (isLink) return editorTheme.primary;
     return null;
   }
 
-  Color? _resolveBackgroundColor(InlineAttributes attrs) {
+  Color? _resolveBackgroundColor(
+    InlineAttributes attrs,
+    BlockEditorThemeData editorTheme,
+  ) {
     final isCode = attrs.inlineCode ?? false;
-    if (isCode) return inlineCodeColor;
+    if (isCode) return inlineCodeColor ?? editorTheme.inlineCodeBackground;
     if (attrs.backgroundColor != null) {
       return Color(int.parse(attrs.backgroundColor!.replaceFirst('#', '0xFF')));
     }
@@ -399,6 +439,9 @@ class _InlineCursorPainter extends CustomPainter {
     required this.cursorColor,
     required this.cursorWidth,
     required this.textWidth,
+    required this.textAlign,
+    required this.textDirection,
+    required this.textScaler,
   });
 
   final TextDelta delta;
@@ -408,46 +451,44 @@ class _InlineCursorPainter extends CustomPainter {
   final Color cursorColor;
   final double cursorWidth;
   final double textWidth;
+  final TextAlign textAlign;
+  final TextDirection textDirection;
+  final TextScaler textScaler;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (cursorOffset < 0) return;
 
     final span = buildMeasurementSpan(delta, baseStyle, variables);
+    final maxWidth = textWidth.isFinite ? textWidth : size.width;
     final painter = TextPainter(
       text: span,
-      textDirection: TextDirection.ltr,
-      textHeightBehavior: const TextHeightBehavior(
-        applyHeightToFirstAscent: false,
-        applyHeightToLastDescent: false,
-      ),
-    )..layout(maxWidth: textWidth);
+      textAlign: textAlign,
+      textDirection: textDirection,
+      textScaler: textScaler,
+      textHeightBehavior: blockEditorTextHeightBehavior,
+    )..layout(maxWidth: maxWidth);
 
     final visualOffset = modelToVisualOffset(delta, cursorOffset, variables);
     final plainVisualLength = span.toPlainText().length;
     final clampedOffset = visualOffset.clamp(0, plainVisualLength);
 
-    final caretOffset = painter.getOffsetForCaret(
-      TextPosition(offset: clampedOffset),
-      Rect.zero,
+    final position = TextPosition(offset: clampedOffset);
+    final caretPrototype = Rect.fromLTWH(
+      0,
+      0,
+      cursorWidth,
+      painter.preferredLineHeight,
     );
-
-    final lineMetrics = painter.computeLineMetrics();
-    double lineHeight = painter.preferredLineHeight;
-    for (final m in lineMetrics) {
-      final mTop = m.baseline - m.ascent;
-      if (caretOffset.dy >= mTop - 1.0 && caretOffset.dy < mTop + m.height) {
-        lineHeight = m.ascent + m.descent;
-        break;
-      }
-    }
+    final caretOffset = painter.getOffsetForCaret(position, caretPrototype);
+    final caretHeight = painter.getFullHeightForCaret(position, caretPrototype);
 
     final scale = painter.height > 0 ? size.height / painter.height : 1.0;
     final cursorTop = caretOffset.dy * scale;
-    final scaledLineHeight = lineHeight * scale;
+    final scaledCaretHeight = caretHeight * scale;
 
     canvas.drawRect(
-      Rect.fromLTWH(caretOffset.dx, cursorTop, cursorWidth, scaledLineHeight),
+      Rect.fromLTWH(caretOffset.dx, cursorTop, cursorWidth, scaledCaretHeight),
       Paint()
         ..color = cursorColor
         ..style = PaintingStyle.fill,
@@ -459,5 +500,8 @@ class _InlineCursorPainter extends CustomPainter {
       old.cursorOffset != cursorOffset ||
       old.cursorColor != cursorColor ||
       old.delta != delta ||
-      old.textWidth != textWidth;
+      old.textWidth != textWidth ||
+      old.textAlign != textAlign ||
+      old.textDirection != textDirection ||
+      old.textScaler != textScaler;
 }

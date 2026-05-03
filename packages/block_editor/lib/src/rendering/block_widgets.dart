@@ -14,13 +14,19 @@ int _resolveOffset(
   final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
   if (renderBox == null) return 0;
 
+  final context = key.currentContext!;
   final localPosition = renderBox.globalToLocal(globalPosition);
   final constrainedWidth = renderBox.size.width;
   final renderedHeight = renderBox.size.height;
+  final effectiveBase = resolveBlockEditorTextStyle(context, baseStyle);
 
-  final span = buildMeasurementSpan(delta, baseStyle, variables);
-  final painter = TextPainter(text: span, textDirection: TextDirection.ltr)
-    ..layout(maxWidth: constrainedWidth);
+  final span = buildMeasurementSpan(delta, effectiveBase, variables);
+  final painter = TextPainter(
+    text: span,
+    textDirection: Directionality.of(context),
+    textScaler: MediaQuery.textScalerOf(context),
+    textHeightBehavior: blockEditorTextHeightBehavior,
+  )..layout(maxWidth: constrainedWidth);
 
   final scale = renderedHeight > 0 && painter.height > 0
       ? painter.height / renderedHeight
@@ -63,6 +69,8 @@ class _ParagraphWidgetState extends State<ParagraphWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final baseStyle = editorTheme.paragraphStyle;
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
@@ -71,7 +79,7 @@ class _ParagraphWidgetState extends State<ParagraphWidget> {
             _textKey,
             details.globalPosition,
             widget.delta,
-            const TextStyle(fontSize: 16),
+            baseStyle,
             BlockEditorScope.maybeOf(context)?.variables ?? const {},
           );
           widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
@@ -81,7 +89,7 @@ class _ParagraphWidgetState extends State<ParagraphWidget> {
           delta: widget.delta,
           blockId: widget.blockId,
           selection: widget.selection,
-          baseStyle: const TextStyle(fontSize: 16),
+          baseStyle: baseStyle,
         ),
       ),
     );
@@ -120,6 +128,8 @@ class _H1WidgetState extends State<H1Widget> {
 
   @override
   Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final baseStyle = editorTheme.heading1Style;
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
@@ -128,7 +138,7 @@ class _H1WidgetState extends State<H1Widget> {
             _textKey,
             details.globalPosition,
             widget.delta,
-            const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+            baseStyle,
             BlockEditorScope.maybeOf(context)?.variables ?? const {},
           );
           widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
@@ -138,7 +148,7 @@ class _H1WidgetState extends State<H1Widget> {
           delta: widget.delta,
           blockId: widget.blockId,
           selection: widget.selection,
-          baseStyle: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+          baseStyle: baseStyle,
         ),
       ),
     );
@@ -177,6 +187,8 @@ class _H2WidgetState extends State<H2Widget> {
 
   @override
   Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final baseStyle = editorTheme.heading2Style;
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
@@ -185,7 +197,7 @@ class _H2WidgetState extends State<H2Widget> {
             _textKey,
             details.globalPosition,
             widget.delta,
-            const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+            baseStyle,
             BlockEditorScope.maybeOf(context)?.variables ?? const {},
           );
           widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
@@ -195,7 +207,7 @@ class _H2WidgetState extends State<H2Widget> {
           delta: widget.delta,
           blockId: widget.blockId,
           selection: widget.selection,
-          baseStyle: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+          baseStyle: baseStyle,
         ),
       ),
     );
@@ -234,6 +246,8 @@ class _H3WidgetState extends State<H3Widget> {
 
   @override
   Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final baseStyle = editorTheme.heading3Style;
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
@@ -242,7 +256,7 @@ class _H3WidgetState extends State<H3Widget> {
             _textKey,
             details.globalPosition,
             widget.delta,
-            const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            baseStyle,
             BlockEditorScope.maybeOf(context)?.variables ?? const {},
           );
           widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
@@ -252,7 +266,7 @@ class _H3WidgetState extends State<H3Widget> {
           delta: widget.delta,
           blockId: widget.blockId,
           selection: widget.selection,
-          baseStyle: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          baseStyle: baseStyle,
         ),
       ),
     );
@@ -296,15 +310,14 @@ class _BulletListWidgetState extends State<BulletListWidget> {
   @override
   Widget build(BuildContext context) {
     final indent = (widget.attributes['indent'] as int? ?? 0).clamp(0, 10);
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final baseStyle = editorTheme.paragraphStyle;
     return Padding(
       padding: EdgeInsets.only(left: indent * 24.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(
-            width: 24,
-            child: Text('•', style: TextStyle(fontSize: 16)),
-          ),
+          SizedBox(width: 24, child: Text('•', style: baseStyle)),
           Expanded(
             child: MouseRegion(
               cursor: SystemMouseCursors.text,
@@ -314,7 +327,7 @@ class _BulletListWidgetState extends State<BulletListWidget> {
                     _textKey,
                     details.globalPosition,
                     widget.delta,
-                    const TextStyle(fontSize: 16),
+                    baseStyle,
                     BlockEditorScope.maybeOf(context)?.variables ?? const {},
                   );
                   widget.onEvent(
@@ -326,7 +339,7 @@ class _BulletListWidgetState extends State<BulletListWidget> {
                   delta: widget.delta,
                   blockId: widget.blockId,
                   selection: widget.selection,
-                  baseStyle: const TextStyle(fontSize: 16),
+                  baseStyle: baseStyle,
                 ),
               ),
             ),
@@ -378,6 +391,8 @@ class _NumberedListWidgetState extends State<NumberedListWidget> {
   @override
   Widget build(BuildContext context) {
     final indent = (widget.attributes['indent'] as int? ?? 0).clamp(0, 10);
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final baseStyle = editorTheme.paragraphStyle;
     return Padding(
       padding: EdgeInsets.only(left: indent * 24.0),
       child: Row(
@@ -385,10 +400,7 @@ class _NumberedListWidgetState extends State<NumberedListWidget> {
         children: [
           SizedBox(
             width: 24,
-            child: Text(
-              '${widget.number}.',
-              style: const TextStyle(fontSize: 16),
-            ),
+            child: Text('${widget.number}.', style: baseStyle),
           ),
           Expanded(
             child: MouseRegion(
@@ -399,7 +411,7 @@ class _NumberedListWidgetState extends State<NumberedListWidget> {
                     _textKey,
                     details.globalPosition,
                     widget.delta,
-                    const TextStyle(fontSize: 16),
+                    baseStyle,
                     BlockEditorScope.maybeOf(context)?.variables ?? const {},
                   );
                   widget.onEvent(
@@ -411,7 +423,7 @@ class _NumberedListWidgetState extends State<NumberedListWidget> {
                   delta: widget.delta,
                   blockId: widget.blockId,
                   selection: widget.selection,
-                  baseStyle: const TextStyle(fontSize: 16),
+                  baseStyle: baseStyle,
                 ),
               ),
             ),
@@ -458,6 +470,11 @@ class _TodoWidgetState extends State<TodoWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final baseStyle = editorTheme.paragraphStyle.copyWith(
+      decoration: widget.checked ? TextDecoration.lineThrough : null,
+      color: widget.checked ? editorTheme.mutedForeground : null,
+    );
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -485,7 +502,7 @@ class _TodoWidgetState extends State<TodoWidget> {
                   _textKey,
                   details.globalPosition,
                   widget.delta,
-                  const TextStyle(fontSize: 16),
+                  baseStyle,
                   BlockEditorScope.maybeOf(context)?.variables ?? const {},
                 );
                 widget.onEvent(
@@ -497,13 +514,7 @@ class _TodoWidgetState extends State<TodoWidget> {
                 delta: widget.delta,
                 blockId: widget.blockId,
                 selection: widget.selection,
-                baseStyle: TextStyle(
-                  fontSize: 16,
-                  decoration: widget.checked
-                      ? TextDecoration.lineThrough
-                      : null,
-                  color: widget.checked ? const Color(0xFF999999) : null,
-                ),
+                baseStyle: baseStyle,
               ),
             ),
           ),
@@ -520,19 +531,20 @@ class _Checkbox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
     return Container(
       width: 18,
       height: 18,
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFF999999), width: 1.5),
-        borderRadius: BorderRadius.circular(3),
-        color: checked ? const Color(0xFF2196F3) : null,
+        border: Border.all(color: editorTheme.border, width: 1.5),
+        borderRadius: BorderRadius.circular(editorTheme.radiusXs),
+        color: checked ? editorTheme.primary : null,
       ),
       child: checked
-          ? const Icon(
-              IconData(0xe156, fontFamily: 'MaterialIcons'),
+          ? Icon(
+              const IconData(0xe156, fontFamily: 'MaterialIcons'),
               size: 14,
-              color: Color(0xFFFFFFFF),
+              color: editorTheme.primaryForeground,
             )
           : null,
     );
@@ -571,6 +583,11 @@ class _QuoteWidgetState extends State<QuoteWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final baseStyle = editorTheme.paragraphStyle.copyWith(
+      color: editorTheme.mutedForeground,
+      fontStyle: FontStyle.italic,
+    );
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
@@ -579,15 +596,15 @@ class _QuoteWidgetState extends State<QuoteWidget> {
             _textKey,
             details.globalPosition,
             widget.delta,
-            const TextStyle(fontSize: 16, color: Color(0xFF666666)),
+            baseStyle,
             BlockEditorScope.maybeOf(context)?.variables ?? const {},
           );
           widget.onEvent(TapEvent(blockId: widget.blockId, offset: offset));
         },
         child: DecoratedBox(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             border: Border(
-              left: BorderSide(color: Color(0xFFCCCCCC), width: 4),
+              left: BorderSide(color: editorTheme.border, width: 4),
             ),
           ),
           child: Padding(
@@ -597,10 +614,7 @@ class _QuoteWidgetState extends State<QuoteWidget> {
               delta: widget.delta,
               blockId: widget.blockId,
               selection: widget.selection,
-              baseStyle: const TextStyle(
-                fontSize: 16,
-                color: Color(0xFF666666),
-              ),
+              baseStyle: baseStyle,
             ),
           ),
         ),
@@ -626,6 +640,7 @@ class DividerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Divider(height: 1, thickness: 1, color: Color(0xFFE0E0E0));
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    return Divider(height: 1, thickness: 1, color: editorTheme.border);
   }
 }

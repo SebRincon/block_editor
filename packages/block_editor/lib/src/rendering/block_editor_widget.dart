@@ -67,11 +67,12 @@ class BlockEditorWidget extends StatefulWidget {
   const BlockEditorWidget({
     super.key,
     required this.controller,
+    this.focusNode,
     this.scrollController,
     this.readOnly = false,
     this.padding = const EdgeInsets.all(16),
-    this.cursorColor = const Color(0xFF000000),
-    this.selectionColor = const Color(0x443399FF),
+    this.cursorColor,
+    this.selectionColor,
     this.onCustomEvent,
     this.variables = const {},
     this.toolbarBreakpoint = 768.0,
@@ -80,6 +81,12 @@ class BlockEditorWidget extends StatefulWidget {
 
   /// The controller that owns the document and selection state.
   final BlockController controller;
+
+  /// Optional focus node used by the editor keyboard and IME pipeline.
+  ///
+  /// Supplying this lets hosts integrate the block editor into an existing
+  /// focus system, for example a tab-level workbench focus handle.
+  final FocusNode? focusNode;
 
   /// An optional scroll controller for the block list.
   final ScrollController? scrollController;
@@ -91,10 +98,10 @@ class BlockEditorWidget extends StatefulWidget {
   final EdgeInsets padding;
 
   /// The color of the blinking cursor.
-  final Color cursorColor;
+  final Color? cursorColor;
 
   /// The color of selection highlights.
-  final Color selectionColor;
+  final Color? selectionColor;
 
   /// Called when a third-party block plugin emits a [CustomBlockEvent].
   final void Function(CustomBlockEvent)? onCustomEvent;
@@ -123,6 +130,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   late StreamSubscription<DocumentChange> _changesSub;
   late StreamSubscription<EditorSelection> _selectionSub;
   late FocusNode _focusNode;
+  late bool _ownsFocusNode;
   late EditorEditingOperations _ops;
   late KeyboardShortcutHandler _shortcuts;
   final GlobalKey _editorKey = GlobalKey();
@@ -154,7 +162,8 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       controller: widget.controller,
       ops: _ops,
     );
-    _focusNode = FocusNode();
+    _ownsFocusNode = widget.focusNode == null;
+    _focusNode = widget.focusNode ?? FocusNode();
     _focusNode.addListener(_onFocusChange);
     if (widget.scrollController == null) {
       _internalScrollController = ScrollController();
@@ -196,6 +205,13 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
         _updateToolbarVisibility(sel);
       });
     }
+    if (oldWidget.focusNode != widget.focusNode) {
+      _focusNode.removeListener(_onFocusChange);
+      if (_ownsFocusNode) _focusNode.dispose();
+      _ownsFocusNode = widget.focusNode == null;
+      _focusNode = widget.focusNode ?? FocusNode();
+      _focusNode.addListener(_onFocusChange);
+    }
     if (oldWidget.scrollController != widget.scrollController) {
       if (widget.scrollController == null &&
           _internalScrollController == null) {
@@ -212,7 +228,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     _changesSub.cancel();
     _selectionSub.cancel();
     _focusNode.removeListener(_onFocusChange);
-    _focusNode.dispose();
+    if (_ownsFocusNode) _focusNode.dispose();
     _inputConnection?.close();
     _internalScrollController?.dispose();
     super.dispose();
@@ -618,6 +634,9 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   Widget build(BuildContext context) {
     final blocks = widget.controller.document.blocks;
     final focusedId = _focusedBlockId();
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final cursorColor = widget.cursorColor ?? editorTheme.cursor;
+    final selectionColor = widget.selectionColor ?? editorTheme.selection;
 
     final list = ListView.builder(
       controller: _scrollController,
@@ -667,8 +686,8 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
                 controller: widget.controller,
                 selection: selection,
                 covered: covered,
-                cursorColor: widget.cursorColor,
-                selectionColor: widget.selectionColor,
+                cursorColor: cursorColor,
+                selectionColor: selectionColor,
                 onEvent: _handleEvent,
                 composingRange: composing,
               ),

@@ -287,6 +287,7 @@ class _SlashCommandMenuState extends State<SlashCommandMenu> {
   @override
   Widget build(BuildContext context) {
     final position = _computePosition(context);
+    final editorTheme = BlockEditorThemeData.fromContext(context);
 
     return Stack(
       children: [
@@ -306,18 +307,20 @@ class _SlashCommandMenuState extends State<SlashCommandMenu> {
             onKeyEvent: _handleKey,
             child: Material(
               elevation: 6,
-              borderRadius: BorderRadius.circular(8),
+              color: editorTheme.popover,
+              shadowColor: Colors.black.withValues(alpha: 0.20),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(editorTheme.radiusMd),
+                side: BorderSide(color: editorTheme.border),
+              ),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: _maxMenuHeight),
                 child: _filtered.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.all(16),
+                    ? Padding(
+                        padding: const EdgeInsets.all(16),
                         child: Text(
                           'No results',
-                          style: TextStyle(
-                            color: Color(0xFF888888),
-                            fontSize: 14,
-                          ),
+                          style: editorTheme.mutedStyle,
                         ),
                       )
                     : _buildList(),
@@ -378,14 +381,14 @@ class _GroupHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
       child: Text(
         label.toUpperCase(),
-        style: const TextStyle(
+        style: editorTheme.xSmallStyle.copyWith(
           fontSize: 10,
           fontWeight: FontWeight.w600,
-          color: Color(0xFF888888),
           letterSpacing: 0.8,
         ),
       ),
@@ -408,7 +411,7 @@ class _EntryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme;
+    final editorTheme = BlockEditorThemeData.fromContext(context);
 
     return MouseRegion(
       onEnter: (_) => onHover(),
@@ -418,10 +421,8 @@ class _EntryRow extends StatelessWidget {
         child: AnimatedContainer(
           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            color: isHighlighted
-                ? color.inverseSurface.withValues(alpha: 0.10)
-                : color.surface.withValues(alpha: 0.0),
+            borderRadius: BorderRadius.circular(editorTheme.radiusMd),
+            color: isHighlighted ? editorTheme.accent : Colors.transparent,
           ),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           duration: const Duration(milliseconds: 150),
@@ -435,14 +436,11 @@ class _EntryRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      entry.config.label,
-                      style: TextStyle(fontSize: 14, color: color.onSurface),
-                    ),
+                    Text(entry.config.label, style: editorTheme.smallStyle),
                     if (entry.config.description != null)
                       Text(
                         entry.config.description!,
-                        style: TextStyle(fontSize: 12, color: color.onSurface),
+                        style: editorTheme.xSmallStyle,
                       ),
                   ],
                 ),

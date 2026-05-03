@@ -3,6 +3,26 @@ library;
 import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
 
+/// Text height behavior shared by rendered block text and measurement painters.
+const blockEditorTextHeightBehavior = TextHeightBehavior(
+  applyHeightToFirstAscent: false,
+  applyHeightToLastDescent: false,
+);
+
+/// Resolves the style that Flutter's [Text] widget will actually render.
+///
+/// shadcn_flutter applies important inherited text defaults, including the app
+/// font family, through [DefaultTextStyle]. Cursor measurement must include
+/// those inherited fields or the caret drifts horizontally as text grows.
+TextStyle resolveBlockEditorTextStyle(
+  BuildContext context,
+  TextStyle? baseStyle,
+) {
+  return DefaultTextStyle.of(
+    context,
+  ).style.merge(baseStyle ?? const TextStyle(fontSize: 16));
+}
+
 /// Builds a [TextSpan] tree from [delta] that matches [RichTextRenderer]
 /// output exactly — applying per-op inline attributes and resolving
 /// [VariableOp] and [TagOp] to their rendered text.

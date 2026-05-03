@@ -12,6 +12,21 @@ TextSpan firstSpanFrom(WidgetTester tester) {
   return root.children!.first as TextSpan;
 }
 
+({TextStyle baseStyle, double cursorWidth, TextDirection textDirection})
+cursorPainterDebugValues(CustomPainter painter) {
+  // ignore: avoid_dynamic_calls
+  final baseStyle = (painter as dynamic).baseStyle as TextStyle;
+  // ignore: avoid_dynamic_calls
+  final cursorWidth = (painter as dynamic).cursorWidth as double;
+  // ignore: avoid_dynamic_calls
+  final textDirection = (painter as dynamic).textDirection as TextDirection;
+  return (
+    baseStyle: baseStyle,
+    cursorWidth: cursorWidth,
+    textDirection: textDirection,
+  );
+}
+
 void main() {
   group('RichTextRenderer — plain text', () {
     testWidgets('renders plain text content', (tester) async {
@@ -235,6 +250,40 @@ void main() {
       final text = tester.widget<Text>(find.byType(Text));
       expect(text.textSpan!.style!.fontSize, 24);
       expect(text.textSpan!.style!.fontWeight, FontWeight.w700);
+    });
+  });
+
+  group('RichTextRenderer — cursor measurement', () {
+    testWidgets('uses inherited text style for cursor measurement', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          DefaultTextStyle(
+            style: const TextStyle(fontFamily: 'Ahem', fontSize: 20),
+            child: SizedBox(
+              width: 320,
+              child: RichTextRenderer(
+                delta: TextDelta.fromPlainText('cursor text'),
+                blockId: 'b1',
+                selection: const CollapsedSelection(
+                  SelectionPoint(blockId: 'b1', offset: 6),
+                ),
+                cursorColor: const Color(0xFF000000),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final customPaint = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .singleWhere((widget) => widget.painter != null);
+      final values = cursorPainterDebugValues(customPaint.painter!);
+      expect(values.baseStyle.fontFamily, 'Ahem');
+      expect(values.baseStyle.fontSize, 16);
+      expect(values.cursorWidth, 2.0);
+      expect(values.textDirection, TextDirection.ltr);
     });
   });
 

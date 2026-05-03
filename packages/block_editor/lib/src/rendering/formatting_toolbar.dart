@@ -339,6 +339,7 @@ class _FormattingToolbarState extends State<FormattingToolbar> {
 
     final attrs = _SelectionAttributes.resolve(sel, widget.controller.document);
     final position = _computePosition(context);
+    final editorTheme = BlockEditorThemeData.fromContext(context);
 
     return Positioned(
       left: position.dx,
@@ -347,59 +348,67 @@ class _FormattingToolbarState extends State<FormattingToolbar> {
       height: _toolbarHeight,
       child: Material(
         elevation: 4,
-        borderRadius: BorderRadius.circular(12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _ToolbarButton(
-              icon: Icons.format_bold,
-              label: 'Bold',
-              state: attrs.bold,
-              onPressed: widget.ops.applyBold,
-            ),
-            _ToolbarButton(
-              icon: Icons.format_italic,
-              label: 'Italic',
-              state: attrs.italic,
-              onPressed: widget.ops.applyItalic,
-            ),
-            _ToolbarButton(
-              icon: Icons.format_underline,
-              label: 'Underline',
-              state: attrs.underline,
-              onPressed: widget.ops.applyUnderline,
-            ),
-            _ToolbarButton(
-              icon: Icons.format_strikethrough,
-              label: 'Strikethrough',
-              state: attrs.strikethrough,
-              onPressed: widget.ops.applyStrikethrough,
-            ),
-            _ToolbarButton(
-              icon: Icons.code,
-              label: 'Inline code',
-              state: attrs.inlineCode,
-              onPressed: widget.ops.applyInlineCode,
-            ),
-            _ToolbarButton(
-              icon: Icons.link,
-              label: 'Link',
-              state: attrs.link,
-              onPressed: () => widget.ops.applyLink(''),
-            ),
-            _ToolbarButton(
-              icon: Icons.format_color_text,
-              label: 'Text color',
-              state: attrs.textColor,
-              onPressed: () => _handleColorButton(isBackground: false),
-            ),
-            _ToolbarButton(
-              icon: Icons.format_color_fill,
-              label: 'Background color',
-              state: attrs.backgroundColor,
-              onPressed: () => _handleColorButton(isBackground: true),
-            ),
-          ],
+        color: editorTheme.popover,
+        shadowColor: Colors.black.withValues(alpha: 0.20),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(editorTheme.radiusLg),
+          side: BorderSide(color: editorTheme.border),
+        ),
+        child: IconTheme(
+          data: IconThemeData(color: editorTheme.popoverForeground, size: 18),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _ToolbarButton(
+                icon: Icons.format_bold,
+                label: 'Bold',
+                state: attrs.bold,
+                onPressed: widget.ops.applyBold,
+              ),
+              _ToolbarButton(
+                icon: Icons.format_italic,
+                label: 'Italic',
+                state: attrs.italic,
+                onPressed: widget.ops.applyItalic,
+              ),
+              _ToolbarButton(
+                icon: Icons.format_underline,
+                label: 'Underline',
+                state: attrs.underline,
+                onPressed: widget.ops.applyUnderline,
+              ),
+              _ToolbarButton(
+                icon: Icons.format_strikethrough,
+                label: 'Strikethrough',
+                state: attrs.strikethrough,
+                onPressed: widget.ops.applyStrikethrough,
+              ),
+              _ToolbarButton(
+                icon: Icons.code,
+                label: 'Inline code',
+                state: attrs.inlineCode,
+                onPressed: widget.ops.applyInlineCode,
+              ),
+              _ToolbarButton(
+                icon: Icons.link,
+                label: 'Link',
+                state: attrs.link,
+                onPressed: () => widget.ops.applyLink(''),
+              ),
+              _ToolbarButton(
+                icon: Icons.format_color_text,
+                label: 'Text color',
+                state: attrs.textColor,
+                onPressed: () => _handleColorButton(isBackground: false),
+              ),
+              _ToolbarButton(
+                icon: Icons.format_color_fill,
+                label: 'Background color',
+                state: attrs.backgroundColor,
+                onPressed: () => _handleColorButton(isBackground: true),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -423,7 +432,7 @@ class _ToolbarButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final isActive = state == _AttributeState.active;
     final isMixed = state == _AttributeState.mixed;
-    final color = Theme.of(context).colorScheme;
+    final editorTheme = BlockEditorThemeData.fromContext(context);
 
     return Tooltip(
       message: label,
@@ -437,15 +446,19 @@ class _ToolbarButton extends StatelessWidget {
             duration: const Duration(milliseconds: 150),
             curve: Curves.easeInOutCubic,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(editorTheme.radiusMd),
               color: isActive
-                  ? color.inverseSurface.withValues(alpha: 0.10)
-                  : color.surface.withValues(alpha: 0.0),
+                  ? editorTheme.primary.withValues(alpha: 0.14)
+                  : isMixed
+                  ? editorTheme.accent
+                  : Colors.transparent,
             ),
             child: Icon(
               icon,
               size: 18,
-              color: isMixed ? color.onInverseSurface : color.onSurface,
+              color: isActive || isMixed
+                  ? editorTheme.primary
+                  : editorTheme.mutedForeground,
             ),
           ),
         ),
@@ -467,6 +480,7 @@ class _PalettePopover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
     return GestureDetector(
       onTap: onDismiss,
       behavior: HitTestBehavior.opaque,
@@ -478,8 +492,12 @@ class _PalettePopover extends StatelessWidget {
               onTap: () {},
               child: Material(
                 elevation: 6,
-                borderRadius: BorderRadius.circular(8),
-                color: const Color(0xFF2C2C2C),
+                color: editorTheme.popover,
+                shadowColor: Colors.black.withValues(alpha: 0.20),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(editorTheme.radiusMd),
+                  side: BorderSide(color: editorTheme.border),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(8),
                   child: Wrap(
@@ -490,12 +508,14 @@ class _PalettePopover extends StatelessWidget {
                         (color) => _Swatch(
                           color: color,
                           isSelected: currentHex == _colorToHex(color),
+                          editorTheme: editorTheme,
                           onTap: () => onColorSelected(color),
                         ),
                       ),
                       _Swatch(
                         color: Colors.transparent,
                         isSelected: currentHex == null,
+                        editorTheme: editorTheme,
                         onTap: () => onColorSelected(Colors.transparent),
                         isClear: true,
                       ),
@@ -515,12 +535,14 @@ class _Swatch extends StatelessWidget {
   const _Swatch({
     required this.color,
     required this.isSelected,
+    required this.editorTheme,
     required this.onTap,
     this.isClear = false,
   });
 
   final Color color;
   final bool isSelected;
+  final BlockEditorThemeData editorTheme;
   final VoidCallback onTap;
   final bool isClear;
 
@@ -534,13 +556,17 @@ class _Swatch extends StatelessWidget {
         decoration: BoxDecoration(
           color: isClear ? null : color,
           border: Border.all(
-            color: isSelected ? Colors.white : const Color(0xFF555555),
+            color: isSelected ? editorTheme.primary : editorTheme.border,
             width: isSelected ? 2 : 1,
           ),
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(editorTheme.radiusSm),
         ),
         child: isClear
-            ? const Icon(Icons.format_clear, size: 16, color: Color(0xFFEEEEEE))
+            ? Icon(
+                Icons.format_clear,
+                size: 16,
+                color: editorTheme.mutedForeground,
+              )
             : null,
       ),
     );

@@ -30,7 +30,7 @@ class BlockCursor extends StatefulWidget {
     this.cursorColor = const Color(0xFF000000),
     this.cursorWidth = 2.0,
     this.animation,
-    this.blinkDuration = const Duration(milliseconds: 1200),
+    this.blinkDuration = const Duration(milliseconds: 500),
     this.child,
   });
 
@@ -56,7 +56,7 @@ class BlockCursor extends StatefulWidget {
   /// An optional external animation that drives cursor opacity.
   final Animation<double>? animation;
 
-  /// The duration of one full blink cycle when using the default animation.
+  /// The duration of one half blink cycle when using the default animation.
   final Duration blinkDuration;
 
   /// The subtree to render beneath the cursor.
@@ -77,7 +77,7 @@ class _BlockCursorState extends State<BlockCursor>
     if (widget.animation == null) {
       _controller = AnimationController(
         vsync: this,
-        duration: widget.blinkDuration ~/ 2,
+        duration: widget.blinkDuration,
       )..repeat(reverse: true);
       _animation = CurvedAnimation(
         parent: _controller!,
@@ -93,6 +93,10 @@ class _BlockCursorState extends State<BlockCursor>
     super.didUpdateWidget(oldWidget);
     if (widget.animation != null) {
       _animation = widget.animation!;
+    } else if (oldWidget.selection != widget.selection ||
+        oldWidget.delta != widget.delta) {
+      _controller?.value = 1.0;
+      _controller?.repeat(reverse: true);
     }
   }
 
@@ -124,7 +128,9 @@ class _BlockCursorState extends State<BlockCursor>
     return AnimatedBuilder(
       animation: _animation,
       builder: (_, inner) => CursorColorScope(
-        color: widget.cursorColor.withValues(alpha: _animation.value),
+        color: widget.cursorColor.withValues(
+          alpha: _animation.value > 0.5 ? 1.0 : 0.0,
+        ),
         cursorWidth: widget.cursorWidth,
         child: inner!,
       ),

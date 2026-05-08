@@ -343,3 +343,55 @@ final class DividerBlock extends BlockPlugin {
   @override
   String slashCommandGroup() => 'Basic';
 }
+
+/// [BlockPlugin] for [BlockTypes.table].
+final class TableBlock extends BlockPlugin {
+  /// Creates a [TableBlock].
+  TableBlock();
+
+  @override
+  String get blockType => BlockTypes.table;
+
+  @override
+  Widget build(
+    BlockNode node,
+    EditorSelection selection,
+    void Function(BlockEvent) onEvent,
+  ) => TableWidget(
+    blockId: node.id,
+    headers: _stringList(node.attributes['headers']),
+    rows: _rowsList(node.attributes['rows']),
+    alignments: _stringList(node.attributes['alignments']),
+    onEvent: onEvent,
+  );
+
+  @override
+  Map<String, dynamic> serialize(BlockNode node) => node.toJson();
+
+  @override
+  BlockNode deserialize(Map<String, dynamic> json) => BlockNode.fromJson(json);
+
+  @override
+  SlashCommandConfig slashCommandItem() => SlashCommandConfig(
+    label: 'Table',
+    group: 'Advanced',
+    icon: const Icon(Icons.table_chart_outlined),
+    onSelected: () {},
+  );
+
+  @override
+  String slashCommandGroup() => 'Advanced';
+}
+
+List<String> _stringList(Object? value) {
+  if (value is! Iterable<Object?>) return const [];
+  return value.map((item) => item?.toString() ?? '').toList();
+}
+
+List<List<String>> _rowsList(Object? value) {
+  if (value is! Iterable<Object?>) return const [];
+  return value
+      .whereType<Iterable<Object?>>()
+      .map((row) => row.map((item) => item?.toString() ?? '').toList())
+      .toList();
+}

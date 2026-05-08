@@ -61,5 +61,51 @@ void main() {}
 
       expect(BlockMarkdownCodec.encode(document), '# Title\n\n- [ ] task');
     });
+
+    test('decodes and encodes GitHub-style pipe tables', () {
+      const markdown = '''
+| Model | License |
+|-------|---------|
+| Small | Apache-2.0 |
+| Large | CC-BY-NC-4.0 |
+''';
+
+      final document = BlockMarkdownCodec.decode(markdown);
+      final table = document.blocks.single;
+
+      expect(table.type, BlockTypes.table);
+      expect(table.attributes['headers'], ['Model', 'License']);
+      expect(table.attributes['rows'], [
+        ['Small', 'Apache-2.0'],
+        ['Large', 'CC-BY-NC-4.0'],
+      ]);
+      expect(
+        BlockMarkdownCodec.encode(document),
+        '''
+| Model | License |
+| --- | --- |
+| Small | Apache-2.0 |
+| Large | CC-BY-NC-4.0 |
+'''
+            .trimRight(),
+      );
+    });
+
+    test('preserves table column alignment markers', () {
+      const markdown = '''
+| Left | Center | Right |
+|:-----|:------:|------:|
+| A | B | C |
+''';
+
+      final document = BlockMarkdownCodec.decode(markdown);
+      final table = document.blocks.single;
+
+      expect(table.attributes['alignments'], ['left', 'center', 'right']);
+      expect(BlockMarkdownCodec.encode(document), '''
+| Left | Center | Right |
+| :--- | :---: | ---: |
+| A | B | C |''');
+    });
   });
 }

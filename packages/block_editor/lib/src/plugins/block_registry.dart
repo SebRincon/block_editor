@@ -37,6 +37,7 @@ final class BlockRegistry {
     TodoBlock(),
     QuoteBlock(),
     DividerBlock(),
+    TableBlock(),
     ImageBlock(),
     VideoBlock(),
     YouTubeBlock(),

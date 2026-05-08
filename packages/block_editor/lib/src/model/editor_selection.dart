@@ -1,3 +1,5 @@
+import 'dart:ui' show TextAffinity;
+
 import 'package:block_editor/block_editor.dart';
 import 'package:meta/meta.dart';
 
@@ -10,7 +12,11 @@ import 'package:meta/meta.dart';
 class SelectionPoint {
   /// Creates a [SelectionPoint] at [offset] within the block identified by
   /// [blockId].
-  const SelectionPoint({required this.blockId, required this.offset});
+  const SelectionPoint({
+    required this.blockId,
+    required this.offset,
+    this.affinity = TextAffinity.downstream,
+  });
 
   /// The id of the [BlockNode] this point falls within.
   final String blockId;
@@ -18,11 +24,19 @@ class SelectionPoint {
   /// The zero-based character offset within the block's [TextDelta].
   final int offset;
 
+  /// Which visual side of a soft-wrap boundary this point prefers.
+  final TextAffinity affinity;
+
   /// Returns a copy of this point with the given fields replaced.
-  SelectionPoint copyWith({String? blockId, int? offset}) {
+  SelectionPoint copyWith({
+    String? blockId,
+    int? offset,
+    TextAffinity? affinity,
+  }) {
     return SelectionPoint(
       blockId: blockId ?? this.blockId,
       offset: offset ?? this.offset,
+      affinity: affinity ?? this.affinity,
     );
   }
 
@@ -30,13 +44,14 @@ class SelectionPoint {
   bool operator ==(Object other) =>
       other is SelectionPoint &&
       other.blockId == blockId &&
-      other.offset == offset;
+      other.offset == offset &&
+      other.affinity == affinity;
 
   @override
-  int get hashCode => Object.hash(blockId, offset);
+  int get hashCode => Object.hash(blockId, offset, affinity);
 
   @override
-  String toString() => 'SelectionPoint($blockId, $offset)';
+  String toString() => 'SelectionPoint($blockId, $offset, $affinity)';
 }
 
 /// The ordered start and end points of an [ExpandedSelection], resolved

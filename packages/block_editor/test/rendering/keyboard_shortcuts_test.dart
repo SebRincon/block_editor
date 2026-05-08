@@ -307,6 +307,28 @@ void main() {
     });
   });
 
+  group('KeyboardShortcutHandler — post command hook', () {
+    test('runs only after handled commands', () {
+      final ctrl = _makeController([_para('a', '')]);
+      ctrl.collapseSelection('a', 0);
+      final ops = EditorEditingOperations(ctrl);
+      var postCommandCount = 0;
+      final handler = KeyboardShortcutHandler(
+        controller: ctrl,
+        ops: ops,
+        onPostCommand: () => postCommandCount++,
+      );
+
+      handler.handle(
+        _keyDown(LogicalKeyboardKey.keyH, character: 'h'),
+        const ModifierKeys(),
+      );
+      handler.handle(_keyDown(LogicalKeyboardKey.f5), const ModifierKeys());
+
+      expect(postCommandCount, 1);
+    });
+  });
+
   group('KeyboardShortcutHandler — cmd shortcuts', () {
     test('undo dispatched on Cmd+Z', () {
       final ctrl = _makeController([_para('a', 'hello')]);

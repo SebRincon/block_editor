@@ -3,7 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Widget wrap(Widget child) {
-  return Directionality(textDirection: TextDirection.ltr, child: child);
+  return MaterialApp(
+    home: Scaffold(
+      body: Directionality(textDirection: TextDirection.ltr, child: child),
+    ),
+  );
+}
+
+Future<void> activateTableCell(WidgetTester tester, String text) async {
+  await tester.tap(find.widgetWithText(TextField, text));
+  await tester.pump();
+  await tester.pump();
 }
 
 void main() {
@@ -361,6 +371,195 @@ void main() {
         wrap(DividerWidget(blockId: 'b1', onEvent: (_) {})),
       );
       expect(find.byType(Divider), findsOneWidget);
+    });
+  });
+
+  group('TableWidget', () {
+    testWidgets('renders header and body cells', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          TableWidget(
+            blockId: 'table1',
+            headers: const ['Model', 'License'],
+            rows: const [
+              ['Small', 'Apache-2.0'],
+              ['Large', 'CC-BY-NC-4.0'],
+            ],
+            alignments: const [],
+            onEvent: (_) {},
+          ),
+        ),
+      );
+
+      expect(find.text('Model', findRichText: true), findsOneWidget);
+      expect(find.text('Apache-2.0', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('shrink-wraps narrow tables instead of filling the row', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 500,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A', 'B'],
+              rows: const [
+                ['1', '2'],
+              ],
+              alignments: const [],
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      final tableSize = tester.getSize(find.byType(Table));
+      expect(tableSize.width, lessThan(500));
+    });
+
+    testWidgets('positions table action controls outside the table border', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 500,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A', 'B'],
+              rows: const [
+                ['1', '2'],
+                ['3', '4'],
+              ],
+              alignments: const [],
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      await activateTableCell(tester, '3');
+      final tableRect = tester.getRect(find.byType(Table));
+      final rowControlRect = tester.getRect(find.byTooltip('Add row below'));
+      expect(rowControlRect.left, greaterThan(tableRect.right));
+
+      await activateTableCell(tester, 'B');
+      final columnControlRect = tester.getRect(
+        find.byTooltip('Add column right'),
+      );
+      expect(columnControlRect.bottom, lessThan(tableRect.top));
+    });
+
+    testWidgets('emits TableCellChangedEvent when a cell is edited', (
+      tester,
+    ) async {
+      BlockEvent? received;
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 500,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A', 'B'],
+              rows: const [
+                ['1', '2'],
+              ],
+              alignments: const [],
+              onEvent: (event) => received = event,
+            ),
+          ),
+        ),
+      );
+      await tester.enterText(find.widgetWithText(TextField, '1'), 'updated');
+      await tester.pump();
+
+      expect(received, isA<TableCellChangedEvent>());
+      final event = received as TableCellChangedEvent;
+      expect(event.blockId, 'table1');
+      expect(event.header, isFalse);
+      expect(event.rowIndex, 0);
+      expect(event.columnIndex, 0);
+      expect(event.text, 'updated');
+    });
+
+    testWidgets('emits table action events on pointer down', (tester) async {
+      final events = <BlockEvent>[];
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 500,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A', 'B'],
+              rows: const [
+                ['1', '2'],
+                ['3', '4'],
+              ],
+              alignments: const [],
+              onEvent: events.add,
+            ),
+          ),
+        ),
+      );
+
+      await activateTableCell(tester, '3');
+      final addRowGesture = await tester.startGesture(
+        tester.getCenter(find.byTooltip('Add row below')),
+      );
+      expect(events.single, isA<TableRowInsertedEvent>());
+      expect((events.single as TableRowInsertedEvent).index, 2);
+      await tester.pump();
+      expect(find.byType(TextField), findsNWidgets(8));
+      await addRowGesture.up();
+      events.clear();
+
+      final deleteRowGesture = await tester.startGesture(
+        tester.getCenter(find.byTooltip('Delete row 3')),
+      );
+      expect(events.single, isA<TableRowDeletedEvent>());
+      expect((events.single as TableRowDeletedEvent).index, 2);
+      await tester.pump();
+      expect(find.byType(TextField), findsNWidgets(6));
+      await deleteRowGesture.up();
+      events.clear();
+
+      await activateTableCell(tester, '2');
+      final deleteColumnGesture = await tester.startGesture(
+        tester.getCenter(find.byTooltip('Delete column 2')),
+      );
+      expect(events.single, isA<TableColumnDeletedEvent>());
+      expect((events.single as TableColumnDeletedEvent).index, 1);
+      await tester.pump();
+      expect(find.byType(TextField), findsNWidgets(3));
+      await deleteColumnGesture.up();
+    });
+
+    testWidgets('emits TapEvent on tap in read-only mode', (tester) async {
+      BlockEvent? received;
+      await tester.pumpWidget(
+        wrap(
+          BlockEditorScope(
+            readOnly: true,
+            child: SizedBox(
+              width: 500,
+              child: TableWidget(
+                blockId: 'table1',
+                headers: const ['A', 'B'],
+                rows: const [
+                  ['1', '2'],
+                ],
+                alignments: const [],
+                onEvent: (event) => received = event,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byType(DecoratedBox).last);
+      expect(received, isA<TapEvent>());
+      expect((received as TapEvent).blockId, 'table1');
     });
   });
 

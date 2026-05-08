@@ -98,6 +98,63 @@ void main() {
       );
       expect(find.byType(Draggable<int>), findsOneWidget);
     });
+
+    testWidgets('plus control requests a block below', (tester) async {
+      var requested = false;
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(size: Size(800, 600)),
+          child: wrap(
+            BlockDragHandle(
+              index: 0,
+              blockId: 'b1',
+              onEvent: (_) {},
+              feedbackWidget: const SizedBox(),
+              onAddBlockRequested: () => requested = true,
+              child: const SizedBox(
+                width: 400,
+                height: 40,
+                child: Text('block content'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Add block below'));
+      expect(requested, isTrue);
+    });
+
+    testWidgets('grip control requests the action menu', (tester) async {
+      String? requestedBlockId;
+      Offset? requestedPosition;
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(size: Size(800, 600)),
+          child: wrap(
+            BlockDragHandle(
+              index: 0,
+              blockId: 'b1',
+              onEvent: (_) {},
+              feedbackWidget: const SizedBox(),
+              onActionMenuRequested: (blockId, position) {
+                requestedBlockId = blockId;
+                requestedPosition = position;
+              },
+              child: const SizedBox(
+                width: 400,
+                height: 40,
+                child: Text('block content'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Drag or open block menu'));
+      expect(requestedBlockId, 'b1');
+      expect(requestedPosition, isNotNull);
+    });
   });
 
   group('BlockDropTarget', () {

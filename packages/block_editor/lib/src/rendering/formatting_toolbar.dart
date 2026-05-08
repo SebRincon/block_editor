@@ -218,17 +218,8 @@ class FormattingToolbar extends StatefulWidget {
 }
 
 class _FormattingToolbarState extends State<FormattingToolbar> {
-  OverlayEntry? _paletteEntry;
-
   static const double _toolbarWidth = 336.0;
   static const double _toolbarHeight = 44.0;
-
-  @override
-  void dispose() {
-    _paletteEntry?.remove();
-    _paletteEntry = null;
-    super.dispose();
-  }
 
   Offset _computePosition(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
@@ -267,6 +258,83 @@ class _FormattingToolbarState extends State<FormattingToolbar> {
       (screenSize.width - _toolbarWidth) / 2,
       screenSize.height - _toolbarHeight - 16.0,
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sel = widget.controller.selection;
+    if (sel is! ExpandedSelection) return const SizedBox.shrink();
+
+    final position = _computePosition(context);
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+
+    return Positioned(
+      left: position.dx,
+      top: position.dy,
+      width: _toolbarWidth,
+      height: _toolbarHeight,
+      child: Material(
+        elevation: 4,
+        color: editorTheme.popover,
+        shadowColor: Colors.black.withValues(alpha: 0.20),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(editorTheme.radiusLg),
+          side: BorderSide(color: editorTheme.border),
+        ),
+        child: FormattingToolbarControls(
+          controller: widget.controller,
+          ops: widget.ops,
+          onColorPickerRequested: widget.onColorPickerRequested,
+        ),
+      ),
+    );
+  }
+}
+
+/// Inline formatting controls for an active [ExpandedSelection].
+///
+/// Unlike [FormattingToolbar], this widget does not position itself in an
+/// overlay. Hosts can embed it in their own chrome, for example a pinned editor
+/// toolbar. It renders nothing when the controller selection is not expanded.
+class FormattingToolbarControls extends StatefulWidget {
+  /// Creates inline formatting controls.
+  const FormattingToolbarControls({
+    super.key,
+    required this.controller,
+    required this.ops,
+    this.onColorPickerRequested,
+    this.mainAxisAlignment = MainAxisAlignment.spaceEvenly,
+    this.mainAxisSize = MainAxisSize.max,
+  });
+
+  /// The controller whose selection and document state are read.
+  final BlockController controller;
+
+  /// The editing operations delegate used to apply inline formatting.
+  final EditorEditingOperations ops;
+
+  /// Optional callback for custom color pickers.
+  final Future<Color?> Function(Color? currentColor)? onColorPickerRequested;
+
+  /// How controls are distributed along the row.
+  final MainAxisAlignment mainAxisAlignment;
+
+  /// Whether the row should consume all horizontal space or shrink-wrap.
+  final MainAxisSize mainAxisSize;
+
+  @override
+  State<FormattingToolbarControls> createState() =>
+      _FormattingToolbarControlsState();
+}
+
+class _FormattingToolbarControlsState extends State<FormattingToolbarControls> {
+  OverlayEntry? _paletteEntry;
+
+  @override
+  void dispose() {
+    _paletteEntry?.remove();
+    _paletteEntry = null;
+    super.dispose();
   }
 
   Future<void> _handleColorButton({required bool isBackground}) async {
@@ -338,78 +406,63 @@ class _FormattingToolbarState extends State<FormattingToolbar> {
     if (sel is! ExpandedSelection) return const SizedBox.shrink();
 
     final attrs = _SelectionAttributes.resolve(sel, widget.controller.document);
-    final position = _computePosition(context);
     final editorTheme = BlockEditorThemeData.fromContext(context);
 
-    return Positioned(
-      left: position.dx,
-      top: position.dy,
-      width: _toolbarWidth,
-      height: _toolbarHeight,
-      child: Material(
-        elevation: 4,
-        color: editorTheme.popover,
-        shadowColor: Colors.black.withValues(alpha: 0.20),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(editorTheme.radiusLg),
-          side: BorderSide(color: editorTheme.border),
-        ),
-        child: IconTheme(
-          data: IconThemeData(color: editorTheme.popoverForeground, size: 18),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _ToolbarButton(
-                icon: Icons.format_bold,
-                label: 'Bold',
-                state: attrs.bold,
-                onPressed: widget.ops.applyBold,
-              ),
-              _ToolbarButton(
-                icon: Icons.format_italic,
-                label: 'Italic',
-                state: attrs.italic,
-                onPressed: widget.ops.applyItalic,
-              ),
-              _ToolbarButton(
-                icon: Icons.format_underline,
-                label: 'Underline',
-                state: attrs.underline,
-                onPressed: widget.ops.applyUnderline,
-              ),
-              _ToolbarButton(
-                icon: Icons.format_strikethrough,
-                label: 'Strikethrough',
-                state: attrs.strikethrough,
-                onPressed: widget.ops.applyStrikethrough,
-              ),
-              _ToolbarButton(
-                icon: Icons.code,
-                label: 'Inline code',
-                state: attrs.inlineCode,
-                onPressed: widget.ops.applyInlineCode,
-              ),
-              _ToolbarButton(
-                icon: Icons.link,
-                label: 'Link',
-                state: attrs.link,
-                onPressed: () => widget.ops.applyLink(''),
-              ),
-              _ToolbarButton(
-                icon: Icons.format_color_text,
-                label: 'Text color',
-                state: attrs.textColor,
-                onPressed: () => _handleColorButton(isBackground: false),
-              ),
-              _ToolbarButton(
-                icon: Icons.format_color_fill,
-                label: 'Background color',
-                state: attrs.backgroundColor,
-                onPressed: () => _handleColorButton(isBackground: true),
-              ),
-            ],
+    return IconTheme(
+      data: IconThemeData(color: editorTheme.popoverForeground, size: 18),
+      child: Row(
+        mainAxisAlignment: widget.mainAxisAlignment,
+        mainAxisSize: widget.mainAxisSize,
+        children: [
+          _ToolbarButton(
+            icon: Icons.format_bold,
+            label: 'Bold',
+            state: attrs.bold,
+            onPressed: widget.ops.applyBold,
           ),
-        ),
+          _ToolbarButton(
+            icon: Icons.format_italic,
+            label: 'Italic',
+            state: attrs.italic,
+            onPressed: widget.ops.applyItalic,
+          ),
+          _ToolbarButton(
+            icon: Icons.format_underline,
+            label: 'Underline',
+            state: attrs.underline,
+            onPressed: widget.ops.applyUnderline,
+          ),
+          _ToolbarButton(
+            icon: Icons.format_strikethrough,
+            label: 'Strikethrough',
+            state: attrs.strikethrough,
+            onPressed: widget.ops.applyStrikethrough,
+          ),
+          _ToolbarButton(
+            icon: Icons.code,
+            label: 'Inline code',
+            state: attrs.inlineCode,
+            onPressed: widget.ops.applyInlineCode,
+          ),
+          _ToolbarButton(
+            icon: Icons.link,
+            label: 'Link',
+            state: attrs.link,
+            onPressed: () => widget.ops.applyLink(''),
+          ),
+          _ToolbarButton(
+            icon: Icons.format_color_text,
+            label: 'Text color',
+            state: attrs.textColor,
+            onPressed: () => _handleColorButton(isBackground: false),
+          ),
+          _ToolbarButton(
+            icon: Icons.format_color_fill,
+            label: 'Background color',
+            state: attrs.backgroundColor,
+            onPressed: () => _handleColorButton(isBackground: true),
+          ),
+        ],
       ),
     );
   }

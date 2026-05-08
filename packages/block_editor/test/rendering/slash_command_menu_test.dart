@@ -136,6 +136,38 @@ void main() {
 
       expect(ctrl.document.blocks.isNotEmpty, isTrue);
     });
+
+    testWidgets('arrow navigation scrolls highlighted entries into view', (
+      tester,
+    ) async {
+      final ctrl = _ctrl([_emptyPara('a')]);
+      ctrl.collapseSelection('a', 0);
+      ctrl.updateDelta('a', TextDelta([const TextOp('/')]));
+
+      await tester.pumpWidget(
+        _menuWidget(ctrl: ctrl, onDismiss: () {}, triggerOffset: 1),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      final scrollableFinder = find.descendant(
+        of: find.byType(SlashCommandMenu),
+        matching: find.byType(Scrollable),
+      );
+      final initialScrollable = tester.state<ScrollableState>(
+        scrollableFinder.first,
+      );
+      expect(initialScrollable.position.pixels, 0);
+
+      for (var i = 0; i < 20; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      final movedScrollable = tester.state<ScrollableState>(
+        scrollableFinder.first,
+      );
+      expect(movedScrollable.position.pixels, greaterThan(0));
+    });
   });
 
   group('SlashCommandMenu — tap to select', () {
@@ -154,12 +186,45 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 50));
 
-      final entries = find.byType(GestureDetector);
-      if (entries.evaluate().length > 1) {
-        await tester.tap(entries.at(1));
+      await tester.tap(find.text('File'));
+      await tester.pump();
+      expect(dismissed, isTrue);
+    });
+
+    testWidgets('table command creates an editable default table', (
+      tester,
+    ) async {
+      var dismissed = false;
+      final ctrl = _ctrl([_para('a', '/')]);
+      ctrl.collapseSelection('a', 1);
+
+      await tester.pumpWidget(
+        _menuWidget(
+          ctrl: ctrl,
+          onDismiss: () => dismissed = true,
+          triggerOffset: 1,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      for (final character in ['t', 'a', 'b', 'l', 'e']) {
+        await tester.sendKeyEvent(
+          LogicalKeyboardKey.keyT,
+          character: character,
+        );
         await tester.pump();
-        expect(dismissed, isTrue);
       }
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+
+      final table = ctrl.document.findById('a')!;
+      expect(dismissed, isTrue);
+      expect(table.type, BlockTypes.table);
+      expect(table.attributes['headers'], ['Column 1', 'Column 2']);
+      expect(table.attributes['rows'], [
+        ['', ''],
+        ['', ''],
+      ]);
     });
   });
 

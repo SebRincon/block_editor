@@ -7,6 +7,34 @@ This package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## Unreleased — 2026-05-08
+
+### Added
+
+- Markdown codec support for block round-tripping, including headings, lists, todos, quotes, dividers, images, links, fenced code blocks, inline formatting, variables, tags, and GitHub-style pipe tables
+- Table block type with editable header/body cells, row and column insertion, row and column deletion, and hover-scoped controls outside the editable cells
+- Command registry and keymap layer for editor shortcuts and host-extensible command routing
+- Desktop navigation and selection shortcuts for arrows, shift-arrows, word movement, visual line movement, and document movement
+- Clipboard handling for `Cmd/Ctrl+C`, `Cmd/Ctrl+X`, `Cmd/Ctrl+V`, and platform edit selectors
+- Host-controlled toolbar support through `BlockEditorWidget.showFormattingToolbar`
+- Block-level controls for adding a paragraph below a block and selecting an entire block from the block action menu
+- Markdown WYSIWYG integration documentation for CodeForge in `docs/markdown-wysiwyg-integration.md`
+
+### Changed
+
+- Code blocks now render Markdown-backed code stored in `BlockNode.delta`, while still supporting legacy `attributes['code']` content
+- Table state updates now apply immediately for row and column add/delete interactions
+- Embedded table cell inputs now own text input focus while active so the root editor does not compete with them
+- Cursor, selection, and visual-line measurement share the same span measurement logic used by rich text rendering
+
+### Fixed
+
+- Clipboard shortcuts were previously missing from the root editor keyboard path
+- Formatting toolbar width lookup no longer assumes the editor render box has completed layout
+- Markdown fenced code blocks no longer decode into invisible code block content
+
+---
+
 ## [0.0.4-dev.1] — 2026-04-02
 
 Re-release of Phase 4 content with updated package README and fully working example app. No API changes from `0.0.3-dev.1`.

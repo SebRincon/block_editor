@@ -79,8 +79,10 @@ class SlashCommandMenu extends StatefulWidget {
 
 class _SlashCommandMenuState extends State<SlashCommandMenu> {
   late final FocusNode _focusNode;
+  late final ScrollController _scrollController;
   late List<_MenuEntry> _allEntries;
   late List<_MenuEntry> _filtered;
+  late List<GlobalKey> _entryKeys;
   int _highlighted = 0;
   String _filter = '';
 
@@ -91,8 +93,10 @@ class _SlashCommandMenuState extends State<SlashCommandMenu> {
   void initState() {
     super.initState();
     _focusNode = FocusNode();
+    _scrollController = ScrollController();
     _allEntries = _buildEntries();
     _filtered = List.of(_allEntries);
+    _syncEntryKeys();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focusNode.requestFocus();
     });
@@ -101,7 +105,12 @@ class _SlashCommandMenuState extends State<SlashCommandMenu> {
   @override
   void dispose() {
     _focusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _syncEntryKeys() {
+    _entryKeys = List.generate(_filtered.length, (_) => GlobalKey());
   }
 
   void _dismiss() {
@@ -149,6 +158,52 @@ class _SlashCommandMenuState extends State<SlashCommandMenu> {
             e.group.toLowerCase().contains(lower);
       }).toList();
       _highlighted = 0;
+      _syncEntryKeys();
+    });
+    _ensureHighlightedVisible(
+      alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+    );
+  }
+
+  void _moveHighlight(int delta) {
+    if (_filtered.isEmpty) return;
+    final next = (_highlighted + delta).clamp(0, _filtered.length - 1);
+    if (next == _highlighted) return;
+    setState(() => _highlighted = next);
+    _ensureHighlightedVisible(
+      alignmentPolicy: delta < 0
+          ? ScrollPositionAlignmentPolicy.keepVisibleAtStart
+          : ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+    );
+  }
+
+  void _jumpHighlight(int index) {
+    if (_filtered.isEmpty) return;
+    final next = index.clamp(0, _filtered.length - 1);
+    if (next == _highlighted) return;
+    final previous = _highlighted;
+    setState(() => _highlighted = next);
+    _ensureHighlightedVisible(
+      alignmentPolicy: next < previous
+          ? ScrollPositionAlignmentPolicy.keepVisibleAtStart
+          : ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+    );
+  }
+
+  void _ensureHighlightedVisible({
+    required ScrollPositionAlignmentPolicy alignmentPolicy,
+  }) {
+    if (_highlighted < 0 || _highlighted >= _entryKeys.length) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final context = _entryKeys[_highlighted].currentContext;
+      if (context == null) return;
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 90),
+        curve: Curves.easeOutCubic,
+        alignmentPolicy: alignmentPolicy,
+      );
     });
   }
 
@@ -176,12 +231,19 @@ class _SlashCommandMenuState extends State<SlashCommandMenu> {
         updatedNode?.delta == null || updatedNode!.delta!.plainText.isEmpty;
 
     if (isEmpty) {
-      widget.controller.transformType(blockId, entry.blockType);
+      if (entry.blockType == BlockTypes.table) {
+        widget.controller.update(
+          blockId,
+          _newNodeForSlashCommand(blockType: entry.blockType, id: blockId),
+        );
+      } else {
+        widget.controller.transformType(blockId, entry.blockType);
+      }
       widget.controller.collapseSelection(blockId, 0);
     } else {
       final blocks = widget.controller.document.blocks;
       final index = blocks.indexWhere((b) => b.id == blockId);
-      final newNode = BlockNode(type: entry.blockType);
+      final newNode = _newNodeForSlashCommand(blockType: entry.blockType);
       widget.controller.insertAt(index + 1, newNode);
       widget.controller.collapseSelection(newNode.id, 0);
     }
@@ -200,19 +262,27 @@ class _SlashCommandMenuState extends State<SlashCommandMenu> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowDown) {
-      if (_filtered.isNotEmpty) {
-        setState(() {
-          _highlighted = (_highlighted + 1).clamp(0, _filtered.length - 1);
-        });
-      }
+      _moveHighlight(1);
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp) {
-      if (_filtered.isNotEmpty) {
-        setState(() {
-          _highlighted = (_highlighted - 1).clamp(0, _filtered.length - 1);
-        });
-      }
+      _moveHighlight(-1);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.pageDown) {
+      _moveHighlight(5);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.pageUp) {
+      _moveHighlight(-5);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.home) {
+      _jumpHighlight(0);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.end) {
+      _jumpHighlight(_filtered.length - 1);
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.enter ||
@@ -345,6 +415,7 @@ class _SlashCommandMenuState extends State<SlashCommandMenu> {
       final i = entryIndex;
       rows.add(
         _EntryRow(
+          key: _entryKeys[i],
           entry: entry,
           isHighlighted: i == _highlighted,
           onTap: () => _confirm(entry),
@@ -354,12 +425,34 @@ class _SlashCommandMenuState extends State<SlashCommandMenu> {
       entryIndex++;
     }
 
-    return ListView(
-      shrinkWrap: true,
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      children: rows,
+    return Scrollbar(
+      controller: _scrollController,
+      thumbVisibility: _filtered.length > 5,
+      child: ListView(
+        controller: _scrollController,
+        shrinkWrap: true,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        children: rows,
+      ),
     );
   }
+}
+
+BlockNode _newNodeForSlashCommand({required String blockType, String? id}) {
+  if (blockType == BlockTypes.table) {
+    return BlockNode(
+      id: id,
+      type: blockType,
+      attributes: {
+        'headers': const ['Column 1', 'Column 2'],
+        'rows': const [
+          ['', ''],
+          ['', ''],
+        ],
+      },
+    );
+  }
+  return BlockNode(id: id, type: blockType);
 }
 
 class _MenuEntry {
@@ -398,6 +491,7 @@ class _GroupHeader extends StatelessWidget {
 
 class _EntryRow extends StatelessWidget {
   const _EntryRow({
+    super.key,
     required this.entry,
     required this.isHighlighted,
     required this.onTap,

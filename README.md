@@ -26,9 +26,16 @@ block_editor/
 ├── packages/
 │   ├── block_editor/          # Core package
 │   └── block_editor_plugins/  # Companion plugins package (placeholder)
+├── docs/                      # Integration notes and implementation docs
 ├── example/                   # Example Flutter app
 └── .github/                   # CI workflows and issue templates
 ```
+
+---
+
+## Integration Docs
+
+- [Markdown WYSIWYG Integration Notes](docs/markdown-wysiwyg-integration.md) — current CodeForge-focused architecture, Markdown round-trip contract, keyboard/clipboard behavior, table/block controls, and next-phase gaps.
 
 ---
 

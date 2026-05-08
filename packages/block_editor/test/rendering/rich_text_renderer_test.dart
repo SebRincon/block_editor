@@ -278,8 +278,12 @@ void main() {
 
       final customPaint = tester
           .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .singleWhere((widget) => widget.painter != null);
-      final values = cursorPainterDebugValues(customPaint.painter!);
+          .singleWhere(
+            (widget) =>
+                widget.painter != null || widget.foregroundPainter != null,
+          );
+      final painter = customPaint.foregroundPainter ?? customPaint.painter!;
+      final values = cursorPainterDebugValues(painter);
       expect(values.baseStyle.fontFamily, 'Ahem');
       expect(values.baseStyle.fontSize, 16);
       expect(values.cursorWidth, 2.0);

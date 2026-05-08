@@ -61,6 +61,29 @@ void main() {
       expect(find.text('var x = 1;'), findsOneWidget);
     });
 
+    testWidgets('renders Markdown-backed delta code content', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          BlockEditorScope(
+            child: Builder(
+              builder: (context) {
+                return CodeBlock().build(
+                  BlockNode(
+                    type: BlockTypes.code,
+                    attributes: {'language': 'dart'},
+                    delta: TextDelta.fromPlainText('void main() {}'),
+                  ),
+                  EditorSelection.none,
+                  (_) {},
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      expect(find.text('void main() {}'), findsOneWidget);
+    });
+
     testWidgets('renders language label when showLanguageSelector is true', (
       tester,
     ) async {

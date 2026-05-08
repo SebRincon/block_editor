@@ -10,9 +10,8 @@ import 'package:flutter/services.dart';
 /// [BlockActionMenu] is displayed as an [OverlayEntry] managed by
 /// [BlockEditorWidget]. It is never shown when readOnly is true.
 ///
-/// The menu provides five actions: Delete Block, Duplicate Block, Turn Into
-/// (a submenu listing all registered block types), Move Up, and Move Down.
-/// All actions dispatch through [BlockController].
+/// The menu provides block-level selection, deletion, duplication, transform,
+/// and move actions. All actions dispatch through [BlockController].
 ///
 /// The menu dismisses when any action is selected, when Escape is pressed,
 /// or when the user taps outside the menu.
@@ -77,6 +76,22 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
     );
   }
 
+  void _selectBlock() {
+    final node = widget.controller.document.findById(widget.blockId);
+    if (node == null) {
+      widget.onDismiss();
+      return;
+    }
+    final length = node.delta?.plainText.length ?? 0;
+    widget.controller.updateSelection(
+      ExpandedSelection(
+        anchor: SelectionPoint(blockId: widget.blockId, offset: 0),
+        focus: SelectionPoint(blockId: widget.blockId, offset: length),
+      ),
+    );
+    widget.onDismiss();
+  }
+
   void _delete() {
     widget.controller.delete(widget.blockId);
     widget.onDismiss();
@@ -125,7 +140,7 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
 
   @override
   Widget build(BuildContext context) {
-    const mainMenuHeight = 5 * 40.0 + 8.0;
+    const mainMenuHeight = 6 * 40.0 + 8.0;
     final editorTheme = BlockEditorThemeData.fromContext(context);
     final pos = _clampedPosition(
       context,
@@ -168,6 +183,11 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    _ActionItem(
+                      icon: Icons.select_all,
+                      label: 'Select block',
+                      onTap: _selectBlock,
+                    ),
                     _ActionItem(
                       icon: Icons.delete_outline,
                       label: 'Delete block',

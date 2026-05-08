@@ -18,6 +18,7 @@ abstract final class BlockTypes {
   static const String callout = 'callout';
   static const String code = 'code';
   static const String divider = 'divider';
+  static const String table = 'table';
 
   static const String image = 'image';
   static const String video = 'video';

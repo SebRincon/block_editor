@@ -1,3 +1,5 @@
+import 'dart:ui' show TextAffinity;
+
 import 'package:block_editor/src/model/editor_selection.dart';
 import 'package:test/test.dart';
 
@@ -14,6 +16,15 @@ void main() {
       final copy = original.copyWith(offset: 7);
       expect(copy.blockId, 'b1');
       expect(copy.offset, 7);
+      expect(copy.affinity, TextAffinity.downstream);
+    });
+
+    test('copyWith can replace affinity', () {
+      const original = SelectionPoint(blockId: 'b1', offset: 3);
+      final copy = original.copyWith(affinity: TextAffinity.upstream);
+      expect(copy.blockId, 'b1');
+      expect(copy.offset, 3);
+      expect(copy.affinity, TextAffinity.upstream);
     });
 
     test('different offsets are not equal', () {
@@ -25,6 +36,16 @@ void main() {
     test('different block ids are not equal', () {
       const a = SelectionPoint(blockId: 'b1', offset: 3);
       const b = SelectionPoint(blockId: 'b2', offset: 3);
+      expect(a, isNot(equals(b)));
+    });
+
+    test('different affinities are not equal', () {
+      const a = SelectionPoint(blockId: 'b1', offset: 3);
+      const b = SelectionPoint(
+        blockId: 'b1',
+        offset: 3,
+        affinity: TextAffinity.upstream,
+      );
       expect(a, isNot(equals(b)));
     });
   });

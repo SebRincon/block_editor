@@ -5,7 +5,8 @@ import 'package:block_editor/block_editor.dart';
 
 /// [BlockPlugin] for [BlockTypes.code].
 ///
-/// Stores code content in [BlockNode.attributes]:
+/// Stores code content in [BlockNode.delta] for Markdown-backed documents.
+/// Legacy nodes may still provide the code string in [BlockNode.attributes]:
 ///
 /// - `code` — the code string to display.
 /// - `language` — the language identifier (e.g. `'dart'`, `'python'`).
@@ -64,7 +65,8 @@ class _CodeBlockWidget extends StatelessWidget {
   static const Color _languageLabelColor = Color(0xFF858585);
   static const String _defaultFont = 'monospace';
 
-  String get _code => node.attributes['code'] as String? ?? '';
+  String get _code =>
+      node.delta?.plainText ?? (node.attributes['code'] as String? ?? '');
   String get _language => node.attributes['language'] as String? ?? 'plaintext';
 
   @override

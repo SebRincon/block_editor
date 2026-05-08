@@ -24,6 +24,7 @@ class BlockDragHandle extends StatefulWidget {
     required this.feedbackWidget,
     this.readOnly = false,
     this.onActionMenuRequested,
+    this.onAddBlockRequested,
   });
 
   /// The current index of this block in the root block list.
@@ -50,6 +51,9 @@ class BlockDragHandle extends StatefulWidget {
   final void Function(String blockId, Offset globalPosition)?
   onActionMenuRequested;
 
+  /// Called when the user requests a new paragraph below this block.
+  final VoidCallback? onAddBlockRequested;
+
   @override
   State<BlockDragHandle> createState() => _BlockDragHandleState();
 }
@@ -60,47 +64,106 @@ class _BlockDragHandleState extends State<BlockDragHandle> {
 
   @override
   Widget build(BuildContext context) {
-    final availableWidth = MediaQuery.of(context).size.width;
-    final tooNarrow = availableWidth < 600;
-    final editorTheme = BlockEditorThemeData.fromContext(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final constraintWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.of(context).size.width;
+        final mediaWidth = MediaQuery.of(context).size.width;
+        final availableWidth = constraintWidth < mediaWidth
+            ? constraintWidth
+            : mediaWidth;
+        final tooNarrow = availableWidth < 600;
 
-    if (widget.readOnly || tooNarrow) {
-      return widget.child;
-    }
+        if (widget.readOnly || tooNarrow) {
+          return widget.child;
+        }
 
-    final handleIcon = MouseRegion(
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
-      cursor: SystemMouseCursors.grab,
-      child: Draggable<int>(
-        data: widget.index,
-        feedback: widget.feedbackWidget,
-        child: GestureDetector(
-          onTapUp: widget.onActionMenuRequested != null
-              ? (details) => widget.onActionMenuRequested!(
-                  widget.blockId,
-                  details.globalPosition,
-                )
-              : null,
-          child: AnimatedOpacity(
-            opacity: _hovering ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 150),
-            child: Icon(
-              Icons.drag_indicator,
-              color: editorTheme.mutedForeground,
-            ),
+        final controls = AnimatedOpacity(
+          opacity: _hovering ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 120),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Tooltip(
+                message: 'Add block below',
+                child: _BlockControlButton(
+                  icon: Icons.add,
+                  onTap: widget.onAddBlockRequested,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Tooltip(
+                message: 'Drag or open block menu',
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.grab,
+                  child: Draggable<int>(
+                    data: widget.index,
+                    feedback: widget.feedbackWidget,
+                    child: _BlockControlButton(
+                      icon: Icons.drag_indicator,
+                      onTapUp: widget.onActionMenuRequested != null
+                          ? (details) => widget.onActionMenuRequested!(
+                              widget.blockId,
+                              details.globalPosition,
+                            )
+                          : null,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
+        );
+
+        return MouseRegion(
+          onEnter: (_) => setState(() => _hovering = true),
+          onExit: (_) => setState(() => _hovering = false),
+          child: Row(
+            key: _rowKey,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 50,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: controls,
+                ),
+              ),
+              Expanded(child: widget.child),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _BlockControlButton extends StatelessWidget {
+  const _BlockControlButton({required this.icon, this.onTap, this.onTapUp});
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final GestureTapUpCallback? onTapUp;
+
+  @override
+  Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      onTapUp: onTapUp,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: editorTheme.background,
+          borderRadius: BorderRadius.circular(editorTheme.radiusXs),
+          border: Border.all(color: editorTheme.border.withValues(alpha: 0.75)),
+        ),
+        child: SizedBox.square(
+          dimension: 22,
+          child: Icon(icon, size: 15, color: editorTheme.mutedForeground),
         ),
       ),
-    );
-
-    return Row(
-      key: _rowKey,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        handleIcon,
-        Expanded(child: widget.child),
-      ],
     );
   }
 }

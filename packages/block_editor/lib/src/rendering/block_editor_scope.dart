@@ -25,6 +25,7 @@ class BlockEditorScope extends InheritedWidget {
     required super.child,
     this.variables = const {},
     this.readOnly = false,
+    this.onEmbeddedInputFocusChanged,
     this.imageConfig,
     this.videoConfig,
     this.youTubeConfig,
@@ -42,6 +43,10 @@ class BlockEditorScope extends InheritedWidget {
 
   /// Whether the editor is in read-only viewer mode.
   final bool readOnly;
+
+  /// Called when an embedded platform text input, such as an editable table
+  /// cell, gains or loses focus.
+  final ValueChanged<bool>? onEmbeddedInputFocusChanged;
 
   /// Optional configuration for image blocks.
   final ImageBlockConfig? imageConfig;
@@ -73,6 +78,7 @@ class BlockEditorScope extends InheritedWidget {
   bool updateShouldNotify(BlockEditorScope oldWidget) {
     return variables != oldWidget.variables ||
         readOnly != oldWidget.readOnly ||
+        onEmbeddedInputFocusChanged != oldWidget.onEmbeddedInputFocusChanged ||
         imageConfig != oldWidget.imageConfig ||
         videoConfig != oldWidget.videoConfig ||
         youTubeConfig != oldWidget.youTubeConfig ||

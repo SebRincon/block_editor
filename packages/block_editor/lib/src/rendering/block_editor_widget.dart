@@ -2,9 +2,11 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:block_editor/block_editor.dart';
+import 'editor_span_builder.dart';
 
 /// The root widget of the block editor.
 ///
@@ -76,6 +78,7 @@ class BlockEditorWidget extends StatefulWidget {
     this.onCustomEvent,
     this.variables = const {},
     this.toolbarBreakpoint = 768.0,
+    this.showFormattingToolbar = true,
     this.onColorPickerRequested,
   });
 
@@ -112,6 +115,12 @@ class BlockEditorWidget extends StatefulWidget {
   /// The screen width threshold in logical pixels that determines the
   /// formatting toolbar display mode. Defaults to 768.
   final double toolbarBreakpoint;
+
+  /// Whether the editor owns and displays the floating formatting toolbar.
+  ///
+  /// Hosts that render [FormattingToolbarControls] in their own chrome can set
+  /// this to false to avoid showing a duplicate floating toolbar.
+  final bool showFormattingToolbar;
 
   /// Optional callback invoked when the user taps a color button in the
   /// formatting toolbar.
@@ -150,18 +159,71 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   bool _actionMenuVisible = false;
   String? _actionMenuBlockId;
   Offset _actionMenuPosition = Offset.zero;
+  int? _selectionPointer;
+  Offset? _selectionPointerStart;
+  SelectionPoint? _selectionDragAnchor;
+  bool _selectionDragActive = false;
+  int _embeddedInputFocusDepth = 0;
 
   ScrollController get _scrollController =>
       widget.scrollController ?? _internalScrollController!;
+
+  KeyboardShortcutHandler _createShortcutHandler() {
+    return KeyboardShortcutHandler(
+      controller: widget.controller,
+      ops: _ops,
+      commandRegistry: _createCommandRegistry(),
+      onPostCommand: _handlePostCommand,
+    );
+  }
+
+  EditorCommandRegistry _createCommandRegistry() {
+    return EditorCommandRegistry([
+      EditorCommand(
+        id: EditorCommandIds.moveToLineStart,
+        title: 'Move To Visual Line Start',
+        category: 'Navigation',
+        execute: (_) {
+          _moveToVisualLineBoundary(end: false, expand: false);
+          return const EditorCommandResult.handled();
+        },
+      ),
+      EditorCommand(
+        id: EditorCommandIds.moveToLineEnd,
+        title: 'Move To Visual Line End',
+        category: 'Navigation',
+        execute: (_) {
+          _moveToVisualLineBoundary(end: true, expand: false);
+          return const EditorCommandResult.handled();
+        },
+      ),
+      EditorCommand(
+        id: EditorCommandIds.extendSelectionToLineStart,
+        title: 'Extend Selection To Visual Line Start',
+        category: 'Selection',
+        execute: (_) {
+          _moveToVisualLineBoundary(end: false, expand: true);
+          return const EditorCommandResult.handled();
+        },
+      ),
+      EditorCommand(
+        id: EditorCommandIds.extendSelectionToLineEnd,
+        title: 'Extend Selection To Visual Line End',
+        category: 'Selection',
+        execute: (_) {
+          _moveToVisualLineBoundary(end: true, expand: true);
+          return const EditorCommandResult.handled();
+        },
+      ),
+      ...EditorCommands.standard,
+    ]);
+  }
 
   @override
   void initState() {
     super.initState();
     _ops = EditorEditingOperations(widget.controller);
-    _shortcuts = KeyboardShortcutHandler(
-      controller: widget.controller,
-      ops: _ops,
-    );
+    _shortcuts = _createShortcutHandler();
     _ownsFocusNode = widget.focusNode == null;
     _focusNode = widget.focusNode ?? FocusNode();
     _focusNode.addListener(_onFocusChange);
@@ -187,10 +249,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
       _ops = EditorEditingOperations(widget.controller);
-      _shortcuts = KeyboardShortcutHandler(
-        controller: widget.controller,
-        ops: _ops,
-      );
+      _shortcuts = _createShortcutHandler();
       _changesSub.cancel();
       _selectionSub.cancel();
       _changesSub = widget.controller.changes.listen((change) {
@@ -221,6 +280,11 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
         _internalScrollController = null;
       }
     }
+    if (oldWidget.controller != widget.controller ||
+        oldWidget.readOnly != widget.readOnly ||
+        oldWidget.showFormattingToolbar != widget.showFormattingToolbar) {
+      _updateToolbarVisibility(widget.controller.selection);
+    }
   }
 
   @override
@@ -235,7 +299,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   }
 
   void _updateToolbarVisibility(EditorSelection sel) {
-    if (widget.readOnly) {
+    if (widget.readOnly || !widget.showFormattingToolbar) {
       if (_toolbarVisible) {
         _toolbarController.hide();
         setState(() => _toolbarVisible = false);
@@ -250,6 +314,72 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       _toolbarController.hide();
       setState(() => _toolbarVisible = false);
     }
+  }
+
+  void _handleSelectionPointerDown(PointerDownEvent event) {
+    if (widget.readOnly) return;
+    if ((event.buttons & kPrimaryButton) == 0) return;
+    final anchor = _selectionPointAtGlobal(
+      event.position,
+      requireTextHit: true,
+    );
+    if (anchor == null) return;
+    _selectionPointer = event.pointer;
+    _selectionPointerStart = event.position;
+    _selectionDragAnchor = anchor;
+    _selectionDragActive = false;
+  }
+
+  void _handleSelectionPointerMove(PointerMoveEvent event) {
+    if (widget.readOnly) return;
+    if (event.pointer != _selectionPointer) return;
+    if ((event.buttons & kPrimaryButton) == 0) {
+      _clearSelectionDrag();
+      return;
+    }
+
+    final anchor = _selectionDragAnchor;
+    final start = _selectionPointerStart;
+    if (anchor == null || start == null) return;
+    if (!_selectionDragActive && (event.position - start).distance < 3.0) {
+      return;
+    }
+
+    final focus = _selectionPointAtGlobal(
+      event.position,
+      requireTextHit: false,
+    );
+    if (focus == null) return;
+
+    _selectionDragActive = true;
+    _focusNode.requestFocus();
+    if (anchor.blockId == focus.blockId && anchor.offset == focus.offset) {
+      widget.controller.collapseSelection(
+        anchor.blockId,
+        anchor.offset,
+        affinity: anchor.affinity,
+      );
+      return;
+    }
+
+    widget.controller.updateSelection(
+      ExpandedSelection(anchor: anchor, focus: focus),
+    );
+  }
+
+  void _handleSelectionPointerUp(PointerUpEvent event) {
+    if (event.pointer == _selectionPointer) _clearSelectionDrag();
+  }
+
+  void _handleSelectionPointerCancel(PointerCancelEvent event) {
+    if (event.pointer == _selectionPointer) _clearSelectionDrag();
+  }
+
+  void _clearSelectionDrag() {
+    _selectionPointer = null;
+    _selectionPointerStart = null;
+    _selectionDragAnchor = null;
+    _selectionDragActive = false;
   }
 
   void _showSlashMenu({required String blockId, required int triggerOffset}) {
@@ -290,6 +420,19 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     });
   }
 
+  void _insertParagraphAfterBlock(String blockId) {
+    final blocks = widget.controller.document.blocks;
+    final index = blocks.indexWhere((block) => block.id == blockId);
+    if (index < 0) return;
+    final node = BlockNode(
+      type: BlockTypes.paragraph,
+      delta: TextDelta.empty(),
+    );
+    widget.controller.insertAt(index + 1, node);
+    widget.controller.collapseSelection(node.id, 0);
+    _focusNode.requestFocus();
+  }
+
   GlobalKey _keyForBlock(String blockId) =>
       _blockKeys.putIfAbsent(blockId, () => GlobalKey());
 
@@ -309,6 +452,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
 
   void _openIMEConnection() {
     if (widget.readOnly) return;
+    if (_embeddedInputFocusDepth > 0) return;
     final sel = widget.controller.selection;
     if (sel is! CollapsedSelection) return;
     _inputConnection?.close();
@@ -330,6 +474,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   }
 
   void _syncIMEState() {
+    if (_embeddedInputFocusDepth > 0) return;
     final connection = _inputConnection;
     if (connection == null || !connection.attached) return;
     final sel = widget.controller.selection;
@@ -350,6 +495,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   @override
   void updateEditingValue(TextEditingValue value) {
     if (widget.readOnly) return;
+    if (_embeddedInputFocusDepth > 0) return;
     final sel = widget.controller.selection;
     if (sel is! CollapsedSelection) return;
     final blockId = sel.point.blockId;
@@ -363,6 +509,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
         currentText,
         newText,
         value.selection.baseOffset,
+        value.selection.affinity,
       );
     }
     if (mounted) setState(() => _composingRange = value.composing);
@@ -373,6 +520,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     String currentText,
     String newText,
     int newCursorOffset,
+    TextAffinity affinity,
   ) {
     final node = widget.controller.document.findById(blockId);
     if (node == null) return;
@@ -411,6 +559,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     widget.controller.collapseSelection(
       blockId,
       newCursorOffset.clamp(0, newText.length),
+      affinity: affinity,
     );
   }
 
@@ -503,6 +652,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
 
   @override
   void performAction(TextInputAction action) {
+    if (_embeddedInputFocusDepth > 0) return;
     if (action == TextInputAction.newline) _ops.insertNewline();
   }
 
@@ -527,7 +677,24 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   @override
   void removeTextPlaceholder() {}
   @override
-  void performSelector(String selectorName) {}
+  void performSelector(String selectorName) {
+    if (widget.readOnly || _embeddedInputFocusDepth > 0) return;
+    switch (selectorName) {
+      case 'copy:':
+      case 'copy':
+        unawaited(_copySelectionToClipboard());
+        return;
+      case 'cut:':
+      case 'cut':
+        _cutSelectionToClipboard();
+        return;
+      case 'paste:':
+      case 'paste':
+        unawaited(_pasteFromClipboard());
+        return;
+    }
+  }
+
   @override
   void showToolbar() {}
 
@@ -554,12 +721,26 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     switch (event) {
       case TapEvent():
         final offset = event.offset < 0 ? 0 : event.offset;
-        widget.controller.collapseSelection(event.blockId, offset);
+        widget.controller.collapseSelection(
+          event.blockId,
+          offset,
+          affinity: event.affinity,
+        );
         _focusNode.requestFocus();
       case CheckboxToggledEvent():
         widget.controller.updateAttributes(event.blockId, {
           'checked': event.checked,
         });
+      case TableCellChangedEvent():
+        _updateTableCell(event);
+      case TableRowInsertedEvent():
+        _insertTableRow(event);
+      case TableColumnInsertedEvent():
+        _insertTableColumn(event);
+      case TableRowDeletedEvent():
+        _deleteTableRow(event);
+      case TableColumnDeletedEvent():
+        _deleteTableColumn(event);
       case BlockReorderedEvent():
         widget.controller.move(event.blockId, event.newIndex);
       case CustomBlockEvent():
@@ -567,11 +748,488 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     }
   }
 
+  void _handleEmbeddedInputFocusChanged(bool focused) {
+    if (focused) {
+      _embeddedInputFocusDepth++;
+      _closeIMEConnection();
+      return;
+    }
+
+    if (_embeddedInputFocusDepth > 0) _embeddedInputFocusDepth--;
+    if (_embeddedInputFocusDepth > 0) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _embeddedInputFocusDepth > 0) return;
+      if (_focusNode.hasFocus) _openIMEConnection();
+    });
+  }
+
+  void _updateTableCell(TableCellChangedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.table) return;
+
+    final headers = _tableHeaders(node);
+    final rows = _tableRows(node, headers.length);
+    if (event.columnIndex < 0 || event.columnIndex >= headers.length) return;
+
+    if (event.header) {
+      headers[event.columnIndex] = event.text;
+    } else {
+      if (event.rowIndex < 0 || event.rowIndex >= rows.length) return;
+      rows[event.rowIndex][event.columnIndex] = event.text;
+    }
+
+    widget.controller.updateAttributes(event.blockId, {
+      'headers': headers,
+      'rows': rows,
+    });
+  }
+
+  void _insertTableRow(TableRowInsertedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.table) return;
+
+    final headers = _tableHeaders(node);
+    final rows = _tableRows(node, headers.length);
+    final index = event.index.clamp(0, rows.length);
+    rows.insert(index, List.filled(headers.length, ''));
+
+    widget.controller.updateAttributes(event.blockId, {
+      'headers': headers,
+      'rows': rows,
+    });
+  }
+
+  void _insertTableColumn(TableColumnInsertedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.table) return;
+
+    final headers = _tableHeaders(node);
+    final rows = _tableRows(node, headers.length);
+    final index = event.index.clamp(0, headers.length);
+    headers.insert(index, 'Column ${headers.length + 1}');
+    for (final row in rows) {
+      row.insert(index, '');
+    }
+
+    final updatedAttributes = <String, dynamic>{
+      'headers': headers,
+      'rows': rows,
+    };
+    final alignments = _tableAlignments(node);
+    if (alignments.isNotEmpty) {
+      while (alignments.length < headers.length - 1) {
+        alignments.add('');
+      }
+      alignments.insert(index, '');
+      updatedAttributes['alignments'] = alignments;
+    }
+    widget.controller.updateAttributes(event.blockId, updatedAttributes);
+  }
+
+  void _deleteTableRow(TableRowDeletedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.table) return;
+
+    final headers = _tableHeaders(node);
+    final rows = _tableRows(node, headers.length);
+    if (rows.length <= 1) return;
+
+    final index = event.index.clamp(0, rows.length - 1);
+    rows.removeAt(index);
+
+    widget.controller.updateAttributes(event.blockId, {
+      'headers': headers,
+      'rows': rows,
+    });
+  }
+
+  void _deleteTableColumn(TableColumnDeletedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.table) return;
+
+    final headers = _tableHeaders(node);
+    if (headers.length <= 1) return;
+
+    final rows = _tableRows(node, headers.length);
+    final index = event.index.clamp(0, headers.length - 1);
+    headers.removeAt(index);
+    for (final row in rows) {
+      if (index < row.length) row.removeAt(index);
+    }
+
+    final updatedAttributes = <String, dynamic>{
+      'headers': headers,
+      'rows': rows,
+    };
+    final alignments = _tableAlignments(node);
+    if (alignments.isNotEmpty) {
+      while (alignments.length < headers.length + 1) {
+        alignments.add('');
+      }
+      alignments.removeAt(index);
+      updatedAttributes['alignments'] = alignments;
+    }
+    widget.controller.updateAttributes(event.blockId, updatedAttributes);
+  }
+
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (widget.readOnly) return KeyEventResult.ignored;
+    if (_embeddedInputFocusDepth > 0) return KeyEventResult.ignored;
+    final clipboardResult = _handleClipboardShortcut(event);
+    if (clipboardResult == KeyEventResult.handled) return clipboardResult;
     final result = _shortcuts.handle(event, ModifierKeys.fromHardware());
     if (result == KeyEventResult.handled) _checkSlashTrigger(event);
     return result;
+  }
+
+  void _handlePostCommand() {
+    _syncIMEState();
+  }
+
+  KeyEventResult _handleClipboardShortcut(KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final hardware = HardwareKeyboard.instance;
+    final primaryPressed = hardware.isMetaPressed || hardware.isControlPressed;
+    if (!primaryPressed || hardware.isAltPressed) return KeyEventResult.ignored;
+
+    if (event.logicalKey == LogicalKeyboardKey.keyC) {
+      unawaited(_copySelectionToClipboard());
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyX) {
+      _cutSelectionToClipboard();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyV) {
+      unawaited(_pasteFromClipboard());
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  Future<void> _copySelectionToClipboard() async {
+    final selectedText = _selectedPlainText();
+    if (selectedText == null) return;
+    await Clipboard.setData(ClipboardData(text: selectedText));
+  }
+
+  void _cutSelectionToClipboard() {
+    final selectedText = _selectedPlainText();
+    if (selectedText == null) return;
+    unawaited(Clipboard.setData(ClipboardData(text: selectedText)));
+    _ops.delete();
+    _syncIMEState();
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted) return;
+    final text = data?.text;
+    if (text == null || text.isEmpty) return;
+    _insertPlainText(text);
+    _syncIMEState();
+  }
+
+  void _insertPlainText(String text) {
+    final normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    if (normalized.isEmpty) return;
+    if (widget.controller.selection is ExpandedSelection) {
+      _ops.delete();
+    }
+    for (final rune in normalized.runes) {
+      final character = String.fromCharCode(rune);
+      if (character == '\n') {
+        _ops.insertNewline();
+      } else {
+        _ops.insertCharacter(character);
+      }
+    }
+  }
+
+  String? _selectedPlainText() {
+    final sel = widget.controller.selection;
+    if (sel is! ExpandedSelection) return null;
+
+    final blocks = widget.controller.document.flatten();
+    final ids = blocks.map((block) => block.id).toList();
+    final resolved = sel.resolveOrder(ids);
+    final startIndex = ids.indexOf(resolved.start.blockId);
+    final endIndex = ids.indexOf(resolved.end.blockId);
+    if (startIndex < 0 || endIndex < 0) return null;
+
+    final lines = <String>[];
+    for (var i = startIndex; i <= endIndex; i++) {
+      final block = blocks[i];
+      final text = block.delta?.plainText ?? '';
+      final start = i == startIndex
+          ? resolved.start.offset.clamp(0, text.length).toInt()
+          : 0;
+      final end = i == endIndex
+          ? resolved.end.offset.clamp(0, text.length).toInt()
+          : text.length;
+      if (end < start) continue;
+      lines.add(text.substring(start, end));
+    }
+    return lines.join('\n');
+  }
+
+  void _moveToVisualLineBoundary({required bool end, required bool expand}) {
+    final sel = widget.controller.selection;
+    final focus = switch (sel) {
+      CollapsedSelection() => sel.point,
+      ExpandedSelection() => sel.focus,
+      NoSelection() => null,
+    };
+    if (focus == null) return;
+
+    final target = _resolveVisualLineBoundary(focus, end: end);
+    if (target == null) return;
+
+    if (!expand) {
+      widget.controller.collapseSelection(
+        target.blockId,
+        target.offset,
+        affinity: target.affinity,
+      );
+      return;
+    }
+
+    final anchor = switch (sel) {
+      CollapsedSelection() => sel.point,
+      ExpandedSelection() => sel.anchor,
+      NoSelection() => null,
+    };
+    if (anchor == null) return;
+    widget.controller.updateSelection(
+      ExpandedSelection(anchor: anchor, focus: target),
+    );
+  }
+
+  SelectionPoint? _resolveVisualLineBoundary(
+    SelectionPoint point, {
+    required bool end,
+  }) {
+    final node = widget.controller.document.findById(point.blockId);
+    final delta = node?.delta ?? TextDelta.empty();
+    final textLength = delta.plainText.length;
+    final renderer = _findRichTextRenderer(point.blockId);
+    if (renderer == null) {
+      return SelectionPoint(
+        blockId: point.blockId,
+        offset: end ? textLength : 0,
+        affinity: end ? TextAffinity.upstream : TextAffinity.downstream,
+      );
+    }
+
+    final box = renderer.context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      return SelectionPoint(
+        blockId: point.blockId,
+        offset: end ? textLength : 0,
+        affinity: end ? TextAffinity.upstream : TextAffinity.downstream,
+      );
+    }
+
+    final variables =
+        BlockEditorScope.maybeOf(renderer.context)?.variables ??
+        widget.variables;
+    final effectiveBase = resolveBlockEditorTextStyle(
+      renderer.context,
+      renderer.widget.baseStyle,
+    );
+    final span = buildMeasurementSpan(delta, effectiveBase, variables);
+    final textDirection = Directionality.of(renderer.context);
+    final textScaler = MediaQuery.textScalerOf(renderer.context);
+    final painter = TextPainter(
+      text: span,
+      textAlign: renderer.widget.textAlign,
+      textDirection: textDirection,
+      textScaler: textScaler,
+      textHeightBehavior: blockEditorTextHeightBehavior,
+    )..layout(maxWidth: box.size.width);
+
+    final visualOffset = modelToVisualOffset(delta, point.offset, variables);
+    final plainVisualLength = span.toPlainText().length;
+    final visualPosition = TextPosition(
+      offset: visualOffset.clamp(0, plainVisualLength),
+      affinity: point.affinity,
+    );
+    final targetVisualOffset = _visualLineBoundaryOffset(
+      painter,
+      visualPosition,
+      end: end,
+    );
+    final targetOffset = visualToModelOffset(
+      delta,
+      targetVisualOffset,
+      variables,
+    ).clamp(0, textLength);
+
+    return SelectionPoint(
+      blockId: point.blockId,
+      offset: targetOffset,
+      affinity: end ? TextAffinity.upstream : TextAffinity.downstream,
+    );
+  }
+
+  int _visualLineBoundaryOffset(
+    TextPainter painter,
+    TextPosition position, {
+    required bool end,
+  }) {
+    final caretPrototype = Rect.fromLTWH(0, 0, 1, painter.preferredLineHeight);
+    final textLength = painter.text?.toPlainText().length ?? 0;
+    final probeY =
+        _probeLineY(painter, position, textLength) ??
+        painter.getOffsetForCaret(position, caretPrototype).dy;
+    final lines = painter.computeLineMetrics();
+    if (lines.isEmpty) return 0;
+
+    LineMetrics line = lines.last;
+    for (final candidate in lines) {
+      final top = candidate.baseline - candidate.ascent;
+      final bottom = top + candidate.height;
+      if (probeY >= top - 0.5 && probeY <= bottom + 0.5) {
+        line = candidate;
+        break;
+      }
+    }
+
+    final lineTop = line.baseline - line.ascent;
+    final lineMiddleY = lineTop + line.height / 2;
+    final lineX = end ? line.left + line.width + 1 : line.left;
+    final target = painter.getPositionForOffset(Offset(lineX, lineMiddleY));
+    return target.offset;
+  }
+
+  double? _probeLineY(
+    TextPainter painter,
+    TextPosition position,
+    int textLength,
+  ) {
+    if (textLength == 0) return null;
+    final start = position.affinity == TextAffinity.upstream
+        ? (position.offset - 1).clamp(0, textLength - 1)
+        : position.offset.clamp(0, textLength - 1);
+    final end = (start + 1).clamp(0, textLength);
+    if (end <= start) return null;
+    final boxes = painter.getBoxesForSelection(
+      TextSelection(baseOffset: start, extentOffset: end),
+    );
+    if (boxes.isEmpty) return null;
+    final box = boxes.first;
+    return box.top + (box.bottom - box.top) / 2;
+  }
+
+  _RichTextRendererEntry? _findRichTextRenderer(String blockId) {
+    final rootContext = _blockKeys[blockId]?.currentContext;
+    if (rootContext == null) return null;
+    _RichTextRendererEntry? found;
+
+    void visit(Element element) {
+      if (found != null) return;
+      final widget = element.widget;
+      if (widget is RichTextRenderer && widget.blockId == blockId) {
+        found = _RichTextRendererEntry(context: element, widget: widget);
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    rootContext.visitChildElements(visit);
+    return found;
+  }
+
+  SelectionPoint? _selectionPointAtGlobal(
+    Offset globalPosition, {
+    required bool requireTextHit,
+  }) {
+    _RichTextRendererEntry? bestEntry;
+    String? bestBlockId;
+    var bestScore = double.infinity;
+
+    for (final block in widget.controller.document.flatten()) {
+      final entry = _findRichTextRenderer(block.id);
+      if (entry == null) continue;
+      final box = entry.context.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+
+      final origin = box.localToGlobal(Offset.zero);
+      final rect = origin & box.size;
+      if (requireTextHit && !rect.inflate(6).contains(globalPosition)) {
+        continue;
+      }
+
+      final score = _rectDistanceScore(globalPosition, rect);
+      if (score < bestScore) {
+        bestScore = score;
+        bestEntry = entry;
+        bestBlockId = block.id;
+      }
+    }
+
+    if (bestEntry == null || bestBlockId == null) return null;
+    return _selectionPointFromRenderer(bestBlockId, bestEntry, globalPosition);
+  }
+
+  double _rectDistanceScore(Offset point, Rect rect) {
+    final dx = point.dx < rect.left
+        ? rect.left - point.dx
+        : point.dx > rect.right
+        ? point.dx - rect.right
+        : 0.0;
+    final dy = point.dy < rect.top
+        ? rect.top - point.dy
+        : point.dy > rect.bottom
+        ? point.dy - rect.bottom
+        : 0.0;
+    return dy * 10000 + dx;
+  }
+
+  SelectionPoint _selectionPointFromRenderer(
+    String blockId,
+    _RichTextRendererEntry entry,
+    Offset globalPosition,
+  ) {
+    final box = entry.context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      return SelectionPoint(blockId: blockId, offset: 0);
+    }
+
+    final delta = entry.widget.delta;
+    final variables =
+        BlockEditorScope.maybeOf(entry.context)?.variables ?? widget.variables;
+    final effectiveBase = resolveBlockEditorTextStyle(
+      entry.context,
+      entry.widget.baseStyle,
+    );
+    final span = buildMeasurementSpan(delta, effectiveBase, variables);
+    final painter = TextPainter(
+      text: span,
+      textAlign: entry.widget.textAlign,
+      textDirection: Directionality.of(entry.context),
+      textScaler: MediaQuery.textScalerOf(entry.context),
+      textHeightBehavior: blockEditorTextHeightBehavior,
+    )..layout(maxWidth: box.size.width);
+
+    final local = box.globalToLocal(globalPosition);
+    final clampedLocal = Offset(
+      local.dx.clamp(0.0, box.size.width),
+      local.dy.clamp(0.0, box.size.height),
+    );
+    final visualPosition = painter.getPositionForOffset(clampedLocal);
+    final offset = visualToModelOffset(
+      delta,
+      visualPosition.offset,
+      variables,
+    ).clamp(0, delta.plainText.length);
+
+    return SelectionPoint(
+      blockId: blockId,
+      offset: offset,
+      affinity: visualPosition.affinity,
+    );
   }
 
   void _checkSlashTrigger(KeyEvent event) {
@@ -594,6 +1252,19 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     final sel = widget.controller.selection;
     if (sel is! ExpandedSelection) return false;
     final covered = widget.controller.selectedBlockIds;
+    if (covered.length == 1 && covered.single == blockId) {
+      final node = widget.controller.document.findById(blockId);
+      final length = node?.delta?.plainText.length ?? 0;
+      final ids = widget.controller.document
+          .flatten()
+          .map((b) => b.id)
+          .toList();
+      final resolved = sel.resolveOrder(ids);
+      return resolved.start.blockId == blockId &&
+          resolved.end.blockId == blockId &&
+          resolved.start.offset == 0 &&
+          resolved.end.offset >= length;
+    }
     if (covered.length < 3) return false;
     return covered.sublist(1, covered.length - 1).contains(blockId);
   }
@@ -610,12 +1281,47 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     return count;
   }
 
+  EdgeInsets _spacingForBlock(List<BlockNode> blocks, int index) {
+    final type = blocks[index].type;
+    final previousType = index > 0 ? blocks[index - 1].type : null;
+    final nextType = index < blocks.length - 1 ? blocks[index + 1].type : null;
+    final first = index == 0;
+
+    if (_isListType(type)) {
+      return EdgeInsets.only(
+        top: _isListType(previousType) ? 0 : 4,
+        bottom: _isListType(nextType) ? 3 : 10,
+      );
+    }
+
+    return switch (type) {
+      BlockTypes.heading1 => EdgeInsets.only(top: first ? 0 : 26, bottom: 10),
+      BlockTypes.heading2 => EdgeInsets.only(top: first ? 0 : 22, bottom: 8),
+      BlockTypes.heading3 => EdgeInsets.only(top: first ? 0 : 18, bottom: 6),
+      BlockTypes.paragraph => const EdgeInsets.only(top: 2, bottom: 10),
+      BlockTypes.quote => const EdgeInsets.only(top: 8, bottom: 12),
+      BlockTypes.code => const EdgeInsets.only(top: 10, bottom: 14),
+      BlockTypes.table => const EdgeInsets.only(top: 10, bottom: 14),
+      BlockTypes.divider => const EdgeInsets.symmetric(vertical: 14),
+      _ => const EdgeInsets.only(top: 4, bottom: 10),
+    };
+  }
+
+  bool _isListType(String? type) {
+    return type == BlockTypes.bulletList ||
+        type == BlockTypes.numberedList ||
+        type == BlockTypes.todo;
+  }
+
   EditorSelection _selectionForBlock(String blockId) {
     if (widget.readOnly) return EditorSelection.none;
     final sel = widget.controller.selection;
     if (sel is! ExpandedSelection) return sel;
     final ids = widget.controller.document.flatten().map((b) => b.id).toList();
     final resolved = sel.resolveOrder(ids);
+    if (!widget.controller.selectedBlockIds.contains(blockId)) {
+      return EditorSelection.none;
+    }
     return ExpandedSelection(anchor: resolved.start, focus: resolved.end);
   }
 
@@ -627,7 +1333,8 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
 
   double _editorWidth() {
     final box = _editorKey.currentContext?.findRenderObject() as RenderBox?;
-    return box?.size.width ?? widget.toolbarBreakpoint;
+    if (box == null || !box.hasSize) return widget.toolbarBreakpoint;
+    return box.size.width;
   }
 
   @override
@@ -667,91 +1374,155 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
           totalBlocks: blocks.length,
           blockIdResolver: (dragIndex) =>
               dragIndex < blocks.length ? blocks[dragIndex].id : null,
-          child: BlockDragHandle(
-            key: ValueKey('handle_${rawNode.id}'),
-            index: index,
-            blockId: rawNode.id,
-            onEvent: _handleEvent,
-            readOnly: widget.readOnly,
-            onActionMenuRequested: widget.readOnly ? null : _showActionMenu,
-            feedbackWidget: BlockGhost(
-              node: rawNode,
-              width: MediaQuery.of(context).size.width,
-            ),
-            child: KeyedSubtree(
-              key: blockKey,
-              child: _BlockItemWidget(
-                key: ValueKey(rawNode.id),
-                initialNode: node,
-                controller: widget.controller,
-                selection: selection,
-                covered: covered,
-                cursorColor: cursorColor,
-                selectionColor: selectionColor,
-                onEvent: _handleEvent,
-                composingRange: composing,
+          child: Padding(
+            padding: _spacingForBlock(blocks, index),
+            child: BlockDragHandle(
+              key: ValueKey('handle_${rawNode.id}'),
+              index: index,
+              blockId: rawNode.id,
+              onEvent: _handleEvent,
+              readOnly: widget.readOnly,
+              onActionMenuRequested: widget.readOnly ? null : _showActionMenu,
+              onAddBlockRequested: widget.readOnly
+                  ? null
+                  : () => _insertParagraphAfterBlock(rawNode.id),
+              feedbackWidget: BlockGhost(
+                node: rawNode,
+                width: MediaQuery.of(context).size.width,
+              ),
+              child: KeyedSubtree(
+                key: blockKey,
+                child: _BlockItemWidget(
+                  key: ValueKey(rawNode.id),
+                  initialNode: node,
+                  controller: widget.controller,
+                  selection: selection,
+                  covered: covered,
+                  cursorColor: cursorColor,
+                  selectionColor: selectionColor,
+                  onEvent: _handleEvent,
+                  composingRange: composing,
+                ),
               ),
             ),
           ),
         );
       },
     );
+    final selectionSurface = Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _handleSelectionPointerDown,
+      onPointerMove: _handleSelectionPointerMove,
+      onPointerUp: _handleSelectionPointerUp,
+      onPointerCancel: _handleSelectionPointerCancel,
+      child: list,
+    );
 
     if (widget.readOnly) {
       return BlockEditorScope(
         variables: widget.variables,
         readOnly: true,
-        child: list,
+        child: selectionSurface,
       );
     }
+
+    final focusedEditor = Focus(
+      key: _editorKey,
+      focusNode: _focusNode,
+      onKeyEvent: _handleKeyEvent,
+      child: selectionSurface,
+    );
+
+    final menuLayer = OverlayPortal(
+      controller: _slashMenuController,
+      overlayChildBuilder: (_) => SlashCommandMenu(
+        controller: widget.controller,
+        ops: _ops,
+        anchorKey: _slashTriggerBlockId != null
+            ? _blockKeys[_slashTriggerBlockId]
+            : null,
+        editorKey: _editorKey,
+        editorFocusNode: _focusNode,
+        triggerBlockId: _slashTriggerBlockId ?? '',
+        triggerOffset: _slashTriggerOffset,
+        onDismiss: _hideSlashMenu,
+      ),
+      child: OverlayPortal(
+        controller: _actionMenuController,
+        overlayChildBuilder: (_) => BlockActionMenu(
+          controller: widget.controller,
+          blockId: _actionMenuBlockId ?? '',
+          globalPosition: _actionMenuPosition,
+          onDismiss: _hideActionMenu,
+        ),
+        child: focusedEditor,
+      ),
+    );
+
+    final editorChild = widget.showFormattingToolbar
+        ? OverlayPortal(
+            controller: _toolbarController,
+            overlayChildBuilder: (_) => FormattingToolbar(
+              controller: widget.controller,
+              ops: _ops,
+              anchorKey: _anchorKeyForSelection(),
+              editorKey: _editorKey,
+              toolbarBreakpoint: widget.toolbarBreakpoint,
+              availableWidth: _editorWidth(),
+              onColorPickerRequested: widget.onColorPickerRequested,
+            ),
+            child: menuLayer,
+          )
+        : menuLayer;
 
     return BlockEditorScope(
       variables: widget.variables,
       readOnly: false,
-      child: OverlayPortal(
-        controller: _toolbarController,
-        overlayChildBuilder: (_) => FormattingToolbar(
-          controller: widget.controller,
-          ops: _ops,
-          anchorKey: _anchorKeyForSelection(),
-          editorKey: _editorKey,
-          toolbarBreakpoint: widget.toolbarBreakpoint,
-          availableWidth: _editorWidth(),
-          onColorPickerRequested: widget.onColorPickerRequested,
-        ),
-        child: OverlayPortal(
-          controller: _slashMenuController,
-          overlayChildBuilder: (_) => SlashCommandMenu(
-            controller: widget.controller,
-            ops: _ops,
-            anchorKey: _slashTriggerBlockId != null
-                ? _blockKeys[_slashTriggerBlockId]
-                : null,
-            editorKey: _editorKey,
-            editorFocusNode: _focusNode,
-            triggerBlockId: _slashTriggerBlockId ?? '',
-            triggerOffset: _slashTriggerOffset,
-            onDismiss: _hideSlashMenu,
-          ),
-          child: OverlayPortal(
-            controller: _actionMenuController,
-            overlayChildBuilder: (_) => BlockActionMenu(
-              controller: widget.controller,
-              blockId: _actionMenuBlockId ?? '',
-              globalPosition: _actionMenuPosition,
-              onDismiss: _hideActionMenu,
-            ),
-            child: Focus(
-              key: _editorKey,
-              focusNode: _focusNode,
-              onKeyEvent: _handleKeyEvent,
-              child: list,
-            ),
-          ),
-        ),
-      ),
+      onEmbeddedInputFocusChanged: _handleEmbeddedInputFocusChanged,
+      child: editorChild,
     );
   }
+}
+
+List<String> _tableHeaders(BlockNode node) {
+  final raw = node.attributes['headers'];
+  if (raw is Iterable<Object?>) {
+    final headers = raw.map((item) => item?.toString() ?? '').toList();
+    if (headers.isNotEmpty) return headers;
+  }
+  return ['Column 1', 'Column 2'];
+}
+
+List<List<String>> _tableRows(BlockNode node, int columnCount) {
+  final raw = node.attributes['rows'];
+  if (raw is Iterable<Object?>) {
+    final rows = raw
+        .whereType<Iterable<Object?>>()
+        .map((row) => _normalizeTableRow(row, columnCount))
+        .toList();
+    if (rows.isNotEmpty) return rows;
+  }
+  return [List.filled(columnCount, ''), List.filled(columnCount, '')];
+}
+
+List<String> _tableAlignments(BlockNode node) {
+  final raw = node.attributes['alignments'];
+  if (raw is! Iterable<Object?>) return <String>[];
+  return raw.map((item) => item?.toString() ?? '').toList();
+}
+
+List<String> _normalizeTableRow(Iterable<Object?> row, int columnCount) {
+  final cells = row.map((item) => item?.toString() ?? '').toList();
+  if (cells.length == columnCount) return cells;
+  if (cells.length > columnCount) return cells.sublist(0, columnCount);
+  return [...cells, ...List.filled(columnCount - cells.length, '')];
+}
+
+final class _RichTextRendererEntry {
+  const _RichTextRendererEntry({required this.context, required this.widget});
+
+  final BuildContext context;
+  final RichTextRenderer widget;
 }
 
 class _BlockItemWidget extends StatefulWidget {
@@ -785,9 +1556,14 @@ class _BlockItemWidgetState extends State<_BlockItemWidget> {
   StreamSubscription<BlockNode>? _blockSub;
 
   BlockNode _applyTransientAttributes(BlockNode updated) {
-    final transient = widget.initialNode.attributes;
-    if (transient.isEmpty) return updated;
-    return updated.copyWith(attributes: {...updated.attributes, ...transient});
+    final transientNumber = widget.initialNode.attributes['number'];
+    if (widget.initialNode.type != BlockTypes.numberedList ||
+        transientNumber == null) {
+      return updated;
+    }
+    return updated.copyWith(
+      attributes: {...updated.attributes, 'number': transientNumber},
+    );
   }
 
   @override

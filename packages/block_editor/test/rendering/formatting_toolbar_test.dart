@@ -65,6 +65,27 @@ void main() {
       expect(find.byType(FormattingToolbar), findsNothing);
     });
 
+    testWidgets('floating toolbar can be disabled by the host', (tester) async {
+      final ctrl = _ctrl([_para('a', 'hello world')]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BlockEditorWidget(
+              controller: ctrl,
+              showFormattingToolbar: false,
+            ),
+          ),
+        ),
+      );
+
+      _expand(ctrl, 'a', 0, 5);
+      await tester.pump();
+
+      expect(find.byType(FormattingToolbar), findsNothing);
+      expect(find.byType(FormattingToolbarControls), findsNothing);
+    });
+
     testWidgets('toolbar disappears when selection collapses', (tester) async {
       final ctrl = _ctrl([_para('a', 'hello world')]);
 

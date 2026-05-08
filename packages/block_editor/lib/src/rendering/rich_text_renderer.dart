@@ -7,10 +7,9 @@ import 'editor_span_builder.dart';
 /// Converts a [TextDelta] into an inline-styled [Text.rich] widget.
 ///
 /// When [CursorColorScope] is present and [selection] is a [CollapsedSelection]
-/// for [blockId], a blinking caret is painted. The caret uses the actual
-/// rendered width of the [Text.rich] widget — obtained via a [GlobalKey] after
-/// layout — so the [TextPainter] measurement wraps identically to the rendered
-/// text regardless of how parent widgets constrain the editor.
+/// for [blockId], a blinking caret is painted over the same [Text.rich] widget
+/// that renders the text. Cursor measurement uses the same span tree and paint
+/// box as the rendered text, so font metrics and wrapping stay aligned.
 class RichTextRenderer extends StatelessWidget {
   /// Creates a [RichTextRenderer] for [delta].
   const RichTextRenderer({
@@ -66,8 +65,9 @@ class RichTextRenderer extends StatelessWidget {
     final textDirection = Directionality.of(context);
     final textScaler = MediaQuery.textScalerOf(context);
     final spans = _buildSpans(variables, editorTheme);
+    final textSpan = TextSpan(style: effectiveBase, children: spans);
     final textWidget = Text.rich(
-      TextSpan(style: effectiveBase, children: spans),
+      textSpan,
       textAlign: textAlign,
       textDirection: textDirection,
       textScaler: textScaler,
@@ -89,33 +89,27 @@ class RichTextRenderer extends StatelessWidget {
 
     final effectiveCursorWidth = scope?.cursorWidth ?? cursorWidth;
     final cursorOff = (sel).point.offset;
+    final cursorAffinity = sel.point.affinity;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final textWidth = constraints.maxWidth;
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            textWidget,
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _InlineCursorPainter(
-                    delta: delta,
-                    baseStyle: effectiveBase,
-                    variables: variables,
-                    cursorOffset: cursorOff,
-                    cursorColor: activeCursorColor,
-                    cursorWidth: effectiveCursorWidth,
-                    textWidth: textWidth,
-                    textAlign: textAlign,
-                    textDirection: textDirection,
-                    textScaler: textScaler,
-                  ),
-                ),
-              ),
-            ),
-          ],
+        return CustomPaint(
+          foregroundPainter: _InlineCursorPainter(
+            delta: delta,
+            textSpan: textSpan,
+            baseStyle: effectiveBase,
+            variables: variables,
+            cursorOffset: cursorOff,
+            cursorAffinity: cursorAffinity,
+            cursorColor: activeCursorColor,
+            cursorWidth: effectiveCursorWidth,
+            textWidth: textWidth,
+            textAlign: textAlign,
+            textDirection: textDirection,
+            textScaler: textScaler,
+          ),
+          child: textWidget,
         );
       },
     );
@@ -433,9 +427,11 @@ class RichTextRenderer extends StatelessWidget {
 class _InlineCursorPainter extends CustomPainter {
   _InlineCursorPainter({
     required this.delta,
+    required this.textSpan,
     required this.baseStyle,
     required this.variables,
     required this.cursorOffset,
+    required this.cursorAffinity,
     required this.cursorColor,
     required this.cursorWidth,
     required this.textWidth,
@@ -445,9 +441,11 @@ class _InlineCursorPainter extends CustomPainter {
   });
 
   final TextDelta delta;
+  final TextSpan textSpan;
   final TextStyle baseStyle;
   final Map<String, String> variables;
   final int cursorOffset;
+  final TextAffinity cursorAffinity;
   final Color cursorColor;
   final double cursorWidth;
   final double textWidth;
@@ -459,10 +457,13 @@ class _InlineCursorPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (cursorOffset < 0) return;
 
-    final span = buildMeasurementSpan(delta, baseStyle, variables);
-    final maxWidth = textWidth.isFinite ? textWidth : size.width;
+    final maxWidth = size.width.isFinite && size.width > 0
+        ? size.width
+        : textWidth.isFinite
+        ? textWidth
+        : double.infinity;
     final painter = TextPainter(
-      text: span,
+      text: textSpan,
       textAlign: textAlign,
       textDirection: textDirection,
       textScaler: textScaler,
@@ -470,10 +471,13 @@ class _InlineCursorPainter extends CustomPainter {
     )..layout(maxWidth: maxWidth);
 
     final visualOffset = modelToVisualOffset(delta, cursorOffset, variables);
-    final plainVisualLength = span.toPlainText().length;
+    final plainVisualLength = textSpan.toPlainText().length;
     final clampedOffset = visualOffset.clamp(0, plainVisualLength);
 
-    final position = TextPosition(offset: clampedOffset);
+    final position = TextPosition(
+      offset: clampedOffset,
+      affinity: cursorAffinity,
+    );
     final caretPrototype = Rect.fromLTWH(
       0,
       0,
@@ -483,12 +487,8 @@ class _InlineCursorPainter extends CustomPainter {
     final caretOffset = painter.getOffsetForCaret(position, caretPrototype);
     final caretHeight = painter.getFullHeightForCaret(position, caretPrototype);
 
-    final scale = painter.height > 0 ? size.height / painter.height : 1.0;
-    final cursorTop = caretOffset.dy * scale;
-    final scaledCaretHeight = caretHeight * scale;
-
     canvas.drawRect(
-      Rect.fromLTWH(caretOffset.dx, cursorTop, cursorWidth, scaledCaretHeight),
+      Rect.fromLTWH(caretOffset.dx, caretOffset.dy, cursorWidth, caretHeight),
       Paint()
         ..color = cursorColor
         ..style = PaintingStyle.fill,
@@ -498,8 +498,13 @@ class _InlineCursorPainter extends CustomPainter {
   @override
   bool shouldRepaint(_InlineCursorPainter old) =>
       old.cursorOffset != cursorOffset ||
+      old.cursorAffinity != cursorAffinity ||
       old.cursorColor != cursorColor ||
+      old.cursorWidth != cursorWidth ||
       old.delta != delta ||
+      old.textSpan != textSpan ||
+      old.baseStyle != baseStyle ||
+      old.variables != variables ||
       old.textWidth != textWidth ||
       old.textAlign != textAlign ||
       old.textDirection != textDirection ||

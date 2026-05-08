@@ -3,6 +3,7 @@
 library;
 
 import 'dart:async';
+import 'dart:ui' show TextAffinity;
 
 import 'package:block_editor/block_editor.dart';
 
@@ -353,9 +354,15 @@ final class BlockController {
   }
 
   /// Collapses the selection to a caret at [offset] inside [blockId].
-  void collapseSelection(String blockId, int offset) {
+  void collapseSelection(
+    String blockId,
+    int offset, {
+    TextAffinity affinity = TextAffinity.downstream,
+  }) {
     updateSelection(
-      CollapsedSelection(SelectionPoint(blockId: blockId, offset: offset)),
+      CollapsedSelection(
+        SelectionPoint(blockId: blockId, offset: offset, affinity: affinity),
+      ),
     );
   }
 

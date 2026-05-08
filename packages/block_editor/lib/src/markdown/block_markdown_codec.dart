@@ -15,6 +15,7 @@ abstract final class BlockMarkdownCodec {
   static final RegExp _dividerPattern = RegExp(r'^\s{0,3}(([-*_])\s*){3,}$');
   static final RegExp _imagePattern = RegExp(r'^!\[([^\]]*)\]\(([^)]*)\)\s*$');
   static final RegExp _linkPattern = RegExp(r'^\[([^\]]+)\]\(([^)]*)\)\s*$');
+  static final RegExp _tableSeparatorCellPattern = RegExp(r'^:?-{3,}:?$');
 
   /// Parses [markdown] into a [BlockDocument].
   static BlockDocument decode(String markdown) {
@@ -51,6 +52,13 @@ abstract final class BlockMarkdownCodec {
             delta: TextDelta.fromPlainText(code.toString()),
           ),
         );
+        continue;
+      }
+
+      if (_isTableStart(lines, index)) {
+        final parsed = _parseTable(lines, index);
+        blocks.add(parsed.block);
+        index = parsed.nextIndex;
         continue;
       }
 
@@ -215,7 +223,8 @@ abstract final class BlockMarkdownCodec {
         _numberedPattern.hasMatch(line) ||
         _dividerPattern.hasMatch(line) ||
         _imagePattern.hasMatch(trimmed) ||
-        _linkPattern.hasMatch(trimmed);
+        _linkPattern.hasMatch(trimmed) ||
+        _isTableRow(line);
   }
 
   static String? _encodeBlock(BlockNode block) {
@@ -235,6 +244,7 @@ abstract final class BlockMarkdownCodec {
             .map((line) => line.isEmpty ? '>' : '> $line')
             .join('\n'),
       BlockTypes.code => _encodeCodeBlock(block),
+      BlockTypes.table => _encodeTableBlock(block),
       BlockTypes.callout =>
         '> **${block.attributes['variant'] ?? 'info'}** $text',
       BlockTypes.divider => '---',
@@ -316,8 +326,12 @@ abstract final class BlockMarkdownCodec {
         type == BlockTypes.heading3 ||
         type == BlockTypes.code ||
         type == BlockTypes.divider ||
+        type == BlockTypes.table ||
         type == BlockTypes.quote;
   }
+
+  /// Parses inline Markdown supported by the block editor into a [TextDelta].
+  static TextDelta parseInline(String input) => _parseInline(input);
 
   static TextDelta _parseInline(String input) {
     final ops = <DeltaOp>[];
@@ -355,6 +369,126 @@ abstract final class BlockMarkdownCodec {
     }
 
     return TextDelta(ops);
+  }
+
+  static bool _isTableStart(List<String> lines, int index) {
+    if (index + 1 >= lines.length) return false;
+    return _isTableRow(lines[index]) && _isTableSeparator(lines[index + 1]);
+  }
+
+  static ({BlockNode block, int nextIndex}) _parseTable(
+    List<String> lines,
+    int index,
+  ) {
+    final headers = _splitTableRow(lines[index]);
+    final alignments = _splitTableRow(
+      lines[index + 1],
+    ).map(_parseAlignment).toList();
+    final rows = <List<String>>[];
+    index += 2;
+    while (index < lines.length && _isTableRow(lines[index])) {
+      rows.add(
+        _normalizeTableRow(_splitTableRow(lines[index]), headers.length),
+      );
+      index++;
+    }
+    return (
+      block: BlockNode(
+        type: BlockTypes.table,
+        attributes: {
+          'headers': headers,
+          'rows': rows,
+          if (alignments.any((value) => value != null))
+            'alignments': alignments,
+        },
+      ),
+      nextIndex: index,
+    );
+  }
+
+  static bool _isTableRow(String line) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty || !trimmed.contains('|')) return false;
+    return _splitTableRow(trimmed).length >= 2;
+  }
+
+  static bool _isTableSeparator(String line) {
+    final cells = _splitTableRow(line);
+    if (cells.length < 2) return false;
+    return cells.every((cell) => _tableSeparatorCellPattern.hasMatch(cell));
+  }
+
+  static List<String> _splitTableRow(String line) {
+    var trimmed = line.trim();
+    if (trimmed.startsWith('|')) trimmed = trimmed.substring(1);
+    if (trimmed.endsWith('|')) {
+      trimmed = trimmed.substring(0, trimmed.length - 1);
+    }
+    return trimmed.split('|').map((cell) => cell.trim()).toList();
+  }
+
+  static String? _parseAlignment(String separatorCell) {
+    final starts = separatorCell.startsWith(':');
+    final ends = separatorCell.endsWith(':');
+    if (starts && ends) return 'center';
+    if (ends) return 'right';
+    if (starts) return 'left';
+    return null;
+  }
+
+  static List<String> _normalizeTableRow(List<String> row, int columns) {
+    if (row.length == columns) return row;
+    if (row.length > columns) return row.sublist(0, columns);
+    return [...row, ...List.filled(columns - row.length, '')];
+  }
+
+  static String _encodeTableBlock(BlockNode block) {
+    final headers = _stringList(block.attributes['headers']);
+    final rows = _rowsList(block.attributes['rows']);
+    if (headers.isEmpty) return '';
+    final alignments = _stringList(block.attributes['alignments']);
+    final buffer = StringBuffer()
+      ..writeln(_encodeTableRow(headers))
+      ..writeln(_encodeTableRow(_separatorCells(headers.length, alignments)));
+    for (var i = 0; i < rows.length; i++) {
+      if (i > 0) buffer.writeln();
+      buffer.write(
+        _encodeTableRow(_normalizeTableRow(rows[i], headers.length)),
+      );
+    }
+    return buffer.toString();
+  }
+
+  static List<String> _stringList(Object? value) {
+    if (value is! Iterable<Object?>) return const [];
+    return value.map((item) => item?.toString() ?? '').toList();
+  }
+
+  static List<List<String>> _rowsList(Object? value) {
+    if (value is! Iterable<Object?>) return const [];
+    return value
+        .whereType<Iterable<Object?>>()
+        .map((row) => row.map((item) => item?.toString() ?? '').toList())
+        .toList();
+  }
+
+  static List<String> _separatorCells(int count, List<String> alignments) {
+    return List.generate(count, (index) {
+      final alignment = index < alignments.length ? alignments[index] : null;
+      return switch (alignment) {
+        'left' => ':---',
+        'right' => '---:',
+        'center' => ':---:',
+        _ => '---',
+      };
+    });
+  }
+
+  static String _encodeTableRow(List<String> cells) {
+    final escaped = cells.map(
+      (cell) => cell.replaceAll('\n', '<br>').replaceAll('|', r'\|'),
+    );
+    return '| ${escaped.join(' | ')} |';
   }
 
   static _LinkToken? _tryParseLink(String input, int index) {

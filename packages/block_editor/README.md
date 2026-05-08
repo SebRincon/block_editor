@@ -25,12 +25,14 @@ flutter pub add block_editor:0.0.3-dev.1
 ## Features
 
 - **Block-based document model** — every piece of content is a `BlockNode` with a typed structure, serialisable to and from plain JSON
+- **Markdown codec** — decode Markdown into editable blocks and encode the current document back to Markdown
 - **Rich inline text** — bold, italic, underline, strikethrough, inline code, links, text color, and background color via `TextDelta` and `InlineAttributes`
 - **Plugin system** — every block type is a `BlockPlugin`; built-in blocks are pre-registered, custom blocks registered with a single line
 - **Slash command menu** — `/` opens a data-driven block insertion menu grouped by category; fully extensible with custom block types
 - **Formatting toolbar** — context-sensitive floating toolbar over text selections with toggle semantics for all inline attributes
-- **Block action menu** — per-block actions: delete, duplicate, turn into, move up, move down
-- **Keyboard shortcuts** — full desktop shortcut support: bold, italic, underline, strikethrough, inline code, undo, redo, select all, word jump, line jump, document jump, cross-block selection extension
+- **Tables** — GitHub-style Markdown table decode/encode with inline row and column editing controls
+- **Block action menu** — per-block actions: select, delete, duplicate, turn into, move up, move down
+- **Keyboard shortcuts** — full desktop shortcut support: copy, cut, paste, bold, italic, underline, strikethrough, inline code, undo, redo, select all, word jump, line jump, document jump, cross-block selection extension
 - **Drag and drop** — reorder blocks by dragging with ghost preview and drop indicator
 - **Read-only mode** — clean viewer mode with text selection but no editing, activated by a single flag
 - **Per-block streams** — subscribe to changes on individual blocks without rebuilding the entire document
@@ -161,6 +163,15 @@ final restored = BlockDocument.fromJson(json);
 ```
 
 The document model is plain JSON — storable in Firestore, SQLite, or any backend without transformation.
+
+## Markdown Round Trip
+
+```dart
+final document = BlockMarkdownCodec.decode(markdownSource);
+final markdown = BlockMarkdownCodec.encode(document);
+```
+
+See the repository-level [Markdown WYSIWYG Integration Notes](../../docs/markdown-wysiwyg-integration.md) for the current CodeForge integration contract, supported Markdown mappings, and known next-phase gaps.
 
 ---
 

@@ -1,5 +1,7 @@
 library;
 
+import 'dart:ui' show TextAffinity;
+
 import 'package:block_editor/block_editor.dart';
 
 /// The base class for all events emitted by block widgets.
@@ -23,10 +25,17 @@ sealed class BlockEvent {
 /// be resolved to a character offset.
 final class TapEvent extends BlockEvent {
   /// Creates a [TapEvent] for the block identified by [blockId] at [offset].
-  const TapEvent({required super.blockId, required this.offset});
+  const TapEvent({
+    required super.blockId,
+    required this.offset,
+    this.affinity = TextAffinity.downstream,
+  });
 
   /// The character offset nearest to the tap position.
   final int offset;
+
+  /// Which visual side of a soft-wrap boundary the tap resolved to.
+  final TextAffinity affinity;
 }
 
 /// Emitted when the user taps the checkbox of a [TodoBlock].
@@ -39,6 +48,66 @@ final class CheckboxToggledEvent extends BlockEvent {
 
   /// The new checked state after the toggle.
   final bool checked;
+}
+
+/// Emitted when an editable Markdown table cell changes.
+final class TableCellChangedEvent extends BlockEvent {
+  /// Creates a [TableCellChangedEvent] for the table identified by [blockId].
+  const TableCellChangedEvent({
+    required super.blockId,
+    required this.header,
+    required this.rowIndex,
+    required this.columnIndex,
+    required this.text,
+  });
+
+  /// Whether the edited cell belongs to the table header row.
+  final bool header;
+
+  /// The body row index, or -1 when [header] is true.
+  final int rowIndex;
+
+  /// The edited column index.
+  final int columnIndex;
+
+  /// The new raw Markdown text for the cell.
+  final String text;
+}
+
+/// Emitted when the user requests a new Markdown table row.
+final class TableRowInsertedEvent extends BlockEvent {
+  /// Creates a [TableRowInsertedEvent] for the table identified by [blockId].
+  const TableRowInsertedEvent({required super.blockId, required this.index});
+
+  /// The body row insertion index.
+  final int index;
+}
+
+/// Emitted when the user requests a new Markdown table column.
+final class TableColumnInsertedEvent extends BlockEvent {
+  /// Creates a [TableColumnInsertedEvent] for the table identified by [blockId].
+  const TableColumnInsertedEvent({required super.blockId, required this.index});
+
+  /// The column insertion index.
+  final int index;
+}
+
+/// Emitted when the user requests a Markdown table row deletion.
+final class TableRowDeletedEvent extends BlockEvent {
+  /// Creates a [TableRowDeletedEvent] for the table identified by [blockId].
+  const TableRowDeletedEvent({required super.blockId, required this.index});
+
+  /// The body row deletion index.
+  final int index;
+}
+
+/// Emitted when the user requests a Markdown table column deletion.
+final class TableColumnDeletedEvent extends BlockEvent {
+  /// Creates a [TableColumnDeletedEvent] for the table identified by [blockId].
+  const TableColumnDeletedEvent({required super.blockId, required this.index});
+
+  /// The column deletion index.
+  final int index;
 }
 
 /// Emitted when the user drags a block to a new position.

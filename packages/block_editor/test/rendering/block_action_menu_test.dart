@@ -31,7 +31,7 @@ Widget _menuWidget({
 
 void main() {
   group('BlockActionMenu — renders', () {
-    testWidgets('shows all five action labels', (tester) async {
+    testWidgets('shows all block action labels', (tester) async {
       final ctrl = _ctrl([_para('a', 'hello'), _para('b', 'world')]);
 
       await tester.pumpWidget(
@@ -39,11 +39,38 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 50));
 
+      expect(find.text('Select block'), findsOneWidget);
       expect(find.text('Delete block'), findsOneWidget);
       expect(find.text('Duplicate block'), findsOneWidget);
       expect(find.text('Turn into'), findsOneWidget);
       expect(find.text('Move up'), findsOneWidget);
       expect(find.text('Move down'), findsOneWidget);
+    });
+  });
+
+  group('BlockActionMenu — select', () {
+    testWidgets('selects the target block and dismisses', (tester) async {
+      var dismissed = false;
+      final ctrl = _ctrl([_para('a', 'hello'), _para('b', 'second')]);
+
+      await tester.pumpWidget(
+        _menuWidget(
+          ctrl: ctrl,
+          blockId: 'a',
+          onDismiss: () => dismissed = true,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.tap(find.text('Select block'));
+      await tester.pump();
+
+      final selection = ctrl.selection as ExpandedSelection;
+      expect(selection.anchor.blockId, 'a');
+      expect(selection.anchor.offset, 0);
+      expect(selection.focus.blockId, 'a');
+      expect(selection.focus.offset, 5);
+      expect(dismissed, isTrue);
     });
   });
 

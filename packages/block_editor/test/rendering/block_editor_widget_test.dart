@@ -1,4 +1,5 @@
 import 'package:block_editor/block_editor.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,9 +15,33 @@ Widget wrap(Widget child) {
 }
 
 Future<void> activateTableCell(WidgetTester tester, String text) async {
+  await hoverTableCell(tester, text);
   await tester.tap(find.widgetWithText(TextField, text));
   await tester.pump();
   await tester.pump();
+}
+
+Future<void> hoverTableCell(WidgetTester tester, String text) async {
+  final finder = find.widgetWithText(TextField, text);
+  await tester.sendEventToBinding(
+    PointerHoverEvent(
+      position: tester.getCenter(finder),
+      kind: PointerDeviceKind.mouse,
+    ),
+  );
+  await tester.pump();
+  await tester.pump();
+}
+
+Future<void> hoverBlockText(WidgetTester tester, String text) async {
+  await tester.sendEventToBinding(
+    PointerHoverEvent(
+      position: tester.getCenter(find.text(text, findRichText: true)),
+      kind: PointerDeviceKind.mouse,
+    ),
+  );
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 120));
 }
 
 void mockClipboard(WidgetTester tester, {String? initialText}) {
@@ -211,6 +236,117 @@ void main() {
       ]);
     });
 
+    testWidgets('code block edits update the block delta', (tester) async {
+      final codeController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'code1',
+            type: BlockTypes.code,
+            attributes: {'language': 'dart'},
+            delta: TextDelta.fromPlainText('void main() {}'),
+          ),
+        ]),
+      );
+      addTearDown(codeController.dispose);
+      await tester.pumpWidget(
+        wrap(BlockEditorWidget(controller: codeController)),
+      );
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'void main() {}'),
+        'void main() {\n  print("hi");\n}',
+      );
+      await tester.pump();
+
+      expect(
+        codeController.document.findById('code1')?.delta?.plainText,
+        'void main() {\n  print("hi");\n}',
+      );
+    });
+
+    testWidgets('raw Markdown block edits update the block delta', (
+      tester,
+    ) async {
+      final rawController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'raw1',
+            type: BlockTypes.rawMarkdown,
+            delta: TextDelta.fromPlainText('<div>raw</div>'),
+          ),
+        ]),
+      );
+      addTearDown(rawController.dispose);
+      await tester.pumpWidget(
+        wrap(BlockEditorWidget(controller: rawController)),
+      );
+
+      await tester.enterText(
+        find.widgetWithText(TextField, '<div>raw</div>'),
+        '<section>\nraw\n</section>',
+      );
+      await tester.pump();
+
+      expect(
+        rawController.document.findById('raw1')?.delta?.plainText,
+        '<section>\nraw\n</section>',
+      );
+    });
+
+    testWidgets('math block edits update the block delta', (tester) async {
+      final mathController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'math1',
+            type: BlockTypes.math,
+            delta: TextDelta.fromPlainText('E = mc^2'),
+          ),
+        ]),
+      );
+      addTearDown(mathController.dispose);
+      await tester.pumpWidget(
+        wrap(BlockEditorWidget(controller: mathController)),
+      );
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'E = mc^2'),
+        r'\int_0^1 x dx',
+      );
+      await tester.pump();
+
+      expect(
+        mathController.document.findById('math1')?.delta?.plainText,
+        r'\int_0^1 x dx',
+      );
+    });
+
+    testWidgets('Mermaid block edits update the block delta', (tester) async {
+      final mermaidController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'diagram1',
+            type: BlockTypes.mermaid,
+            delta: TextDelta.fromPlainText('graph TD\nA --> B'),
+          ),
+        ]),
+      );
+      addTearDown(mermaidController.dispose);
+      await tester.pumpWidget(
+        wrap(BlockEditorWidget(controller: mermaidController)),
+      );
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'graph TD\nA --> B'),
+        'sequenceDiagram\nA->>B: hello',
+      );
+      await tester.pump();
+
+      expect(
+        mermaidController.document.findById('diagram1')?.delta?.plainText,
+        'sequenceDiagram\nA->>B: hello',
+      );
+    });
+
     testWidgets('table action buttons append rows and columns', (tester) async {
       final tableController = BlockController(
         document: BlockDocument([
@@ -384,6 +520,47 @@ void main() {
       ]);
     });
 
+    testWidgets('table alignment controls update column alignments', (
+      tester,
+    ) async {
+      final tableController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'table1',
+            type: BlockTypes.table,
+            attributes: {
+              'headers': const ['A', 'B'],
+              'rows': const [
+                ['1', '2'],
+              ],
+            },
+          ),
+        ]),
+      );
+      addTearDown(tableController.dispose);
+      await tester.pumpWidget(
+        wrap(BlockEditorWidget(controller: tableController)),
+      );
+
+      await hoverTableCell(tester, 'A');
+      await tester.tap(find.byTooltip('Align center'));
+      await tester.pump();
+
+      expect(tableController.document.blocks.single.attributes['alignments'], [
+        'center',
+        '',
+      ]);
+
+      await hoverTableCell(tester, 'A');
+      await tester.tap(find.byTooltip('Align center'));
+      await tester.pump();
+
+      expect(tableController.document.blocks.single.attributes['alignments'], [
+        '',
+        '',
+      ]);
+    });
+
     testWidgets('dragging across text creates ExpandedSelection', (
       tester,
     ) async {
@@ -406,20 +583,13 @@ void main() {
       expect(expanded.focus.offset, greaterThan(expanded.anchor.offset));
     });
 
-    testWidgets('block plus control inserts an empty paragraph below', (
-      tester,
-    ) async {
+    testWidgets('block plus control is not shown by default', (tester) async {
       await tester.pumpWidget(wrap(BlockEditorWidget(controller: controller)));
 
-      await tester.tap(find.byTooltip('Add block below').first);
-      await tester.pump();
+      await hoverBlockText(tester, 'First');
 
-      expect(controller.document.blocks.length, 4);
-      expect(controller.document.blocks[1].type, BlockTypes.paragraph);
-      expect(controller.document.blocks[1].delta?.plainText, '');
-      final selection = controller.selection as CollapsedSelection;
-      expect(selection.point.blockId, controller.document.blocks[1].id);
-      expect(selection.point.offset, 0);
+      expect(find.byTooltip('Add block below'), findsNothing);
+      expect(controller.document.blocks.length, 3);
     });
 
     testWidgets('block action menu select marks a whole block selected', (
@@ -427,7 +597,9 @@ void main() {
     ) async {
       await tester.pumpWidget(wrap(BlockEditorWidget(controller: controller)));
 
-      await tester.tap(find.byTooltip('Drag or open block menu').first);
+      await hoverBlockText(tester, 'First');
+      expect(find.byTooltip('Drag or open block menu'), findsNothing);
+      await tester.tap(find.byIcon(Icons.drag_indicator).first);
       await tester.pump();
       await tester.tap(find.text('Select block'));
       await tester.pump();
@@ -487,6 +659,115 @@ void main() {
       expect(sel.focus.offset, 2);
     });
 
+    testWidgets('Tab and Shift+Tab indent task list blocks', (tester) async {
+      final focusNode = FocusNode();
+      addTearDown(focusNode.dispose);
+      final listController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'task1',
+            type: BlockTypes.todo,
+            attributes: const {'checked': false},
+            delta: TextDelta.fromPlainText('child task'),
+          ),
+        ]),
+      );
+      addTearDown(listController.dispose);
+      listController.collapseSelection('task1', 0);
+      await tester.pumpWidget(
+        wrap(
+          BlockEditorWidget(controller: listController, focusNode: focusNode),
+        ),
+      );
+      focusNode.requestFocus();
+      await tester.pump();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      expect(
+        listController.document.findById('task1')!.attributes['indent'],
+        1,
+      );
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
+      expect(
+        listController.document.findById('task1')!.attributes['indent'],
+        0,
+      );
+    });
+
+    testWidgets('Tab indents selected list blocks as a group', (tester) async {
+      final focusNode = FocusNode();
+      addTearDown(focusNode.dispose);
+      final listController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'task1',
+            type: BlockTypes.todo,
+            attributes: const {'checked': false},
+            delta: TextDelta.fromPlainText('first task'),
+          ),
+          BlockNode(
+            id: 'task2',
+            type: BlockTypes.bulletList,
+            delta: TextDelta.fromPlainText('second task'),
+          ),
+          paragraph(id: 'p1', text: 'not a list'),
+        ]),
+      );
+      addTearDown(listController.dispose);
+      listController.updateSelection(
+        const ExpandedSelection(
+          anchor: SelectionPoint(blockId: 'task1', offset: 0),
+          focus: SelectionPoint(blockId: 'task2', offset: 11),
+        ),
+      );
+      await tester.pumpWidget(
+        wrap(
+          BlockEditorWidget(controller: listController, focusNode: focusNode),
+        ),
+      );
+      focusNode.requestFocus();
+      await tester.pump();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+
+      expect(
+        listController.document.findById('task1')!.attributes['indent'],
+        1,
+      );
+      expect(
+        listController.document.findById('task2')!.attributes['indent'],
+        1,
+      );
+      expect(
+        listController.document.findById('p1')!.attributes['indent'],
+        isNull,
+      );
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyZ);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+
+      expect(
+        listController.document.findById('task1')!.attributes['indent'],
+        isNull,
+      );
+      expect(
+        listController.document.findById('task2')!.attributes['indent'],
+        isNull,
+      );
+    });
+
     testWidgets('Meta+ArrowRight moves to line end', (tester) async {
       final focusNode = FocusNode();
       addTearDown(focusNode.dispose);
@@ -544,7 +825,7 @@ void main() {
 
       final sel = wrappedController.selection as CollapsedSelection;
       expect(sel.point.blockId, 'b1');
-      expect(sel.point.offset, 8);
+      expect(sel.point.offset, 10);
     });
 
     testWidgets('Meta+ArrowLeft moves to visual line start inside a wrap', (
@@ -583,7 +864,7 @@ void main() {
 
       final sel = wrappedController.selection as CollapsedSelection;
       expect(sel.point.blockId, 'b1');
-      expect(sel.point.offset, 4);
+      expect(sel.point.offset, 5);
     });
 
     testWidgets('Shift+Meta+ArrowLeft extends to visual line start', (
@@ -626,7 +907,7 @@ void main() {
       expect(sel.anchor.blockId, 'b1');
       expect(sel.anchor.offset, 7);
       expect(sel.focus.blockId, 'b1');
-      expect(sel.focus.offset, 4);
+      expect(sel.focus.offset, 5);
     });
 
     testWidgets('Control+ArrowRight moves by word', (tester) async {
@@ -726,6 +1007,104 @@ void main() {
 
       final data = await Clipboard.getData(Clipboard.kTextPlain);
       expect(data?.text, 'irs');
+    });
+
+    testWidgets('Meta+C copies fully selected blocks as markdown', (
+      tester,
+    ) async {
+      mockClipboard(tester);
+      final focusNode = FocusNode();
+      addTearDown(focusNode.dispose);
+      final markdownController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'h1',
+            type: BlockTypes.heading1,
+            delta: TextDelta.fromPlainText('Title'),
+          ),
+          BlockNode(
+            id: 'todo1',
+            type: BlockTypes.todo,
+            attributes: const {'checked': true, 'indent': 1},
+            delta: TextDelta.fromPlainText('Done'),
+          ),
+        ]),
+      );
+      addTearDown(markdownController.dispose);
+      markdownController.updateSelection(
+        const ExpandedSelection(
+          anchor: SelectionPoint(blockId: 'h1', offset: 0),
+          focus: SelectionPoint(blockId: 'todo1', offset: 4),
+        ),
+      );
+      await tester.pumpWidget(
+        wrap(
+          BlockEditorWidget(
+            controller: markdownController,
+            focusNode: focusNode,
+          ),
+        ),
+      );
+      focusNode.requestFocus();
+      await tester.pump();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyC);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyC);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.idle();
+
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      expect(data?.text, '# Title\n\n  - [x] Done');
+    });
+
+    testWidgets('Meta+C copies fully selected tables as markdown', (
+      tester,
+    ) async {
+      mockClipboard(tester);
+      final focusNode = FocusNode();
+      addTearDown(focusNode.dispose);
+      final tableController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'table1',
+            type: BlockTypes.table,
+            attributes: const {
+              'headers': ['Name', 'Status'],
+              'rows': [
+                ['CodeForge', '**ready**'],
+              ],
+              'alignments': ['left', 'center'],
+            },
+          ),
+        ]),
+      );
+      addTearDown(tableController.dispose);
+      tableController.updateSelection(
+        const ExpandedSelection(
+          anchor: SelectionPoint(blockId: 'table1', offset: 0),
+          focus: SelectionPoint(blockId: 'table1', offset: 0),
+        ),
+      );
+      await tester.pumpWidget(
+        wrap(
+          BlockEditorWidget(controller: tableController, focusNode: focusNode),
+        ),
+      );
+      focusNode.requestFocus();
+      await tester.pump();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyC);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyC);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.idle();
+
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      expect(data?.text, '''
+| Name | Status |
+| :--- | :---: |
+| CodeForge | **ready** |''');
     });
 
     testWidgets('Meta+V pastes clipboard text at the cursor', (tester) async {
@@ -880,6 +1259,51 @@ void main() {
           .toList();
       expect(widgets[0].number, 1);
       expect(widgets[1].number, 1);
+    });
+
+    testWidgets('nested numbered list items count within their indent', (
+      tester,
+    ) async {
+      final numberedController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'n1',
+            type: BlockTypes.numberedList,
+            delta: TextDelta.fromPlainText('one'),
+          ),
+          BlockNode(
+            id: 'n2',
+            type: BlockTypes.numberedList,
+            attributes: const {'indent': 1},
+            delta: TextDelta.fromPlainText('child one'),
+          ),
+          BlockNode(
+            id: 'n3',
+            type: BlockTypes.numberedList,
+            attributes: const {'indent': 1},
+            delta: TextDelta.fromPlainText('child two'),
+          ),
+          BlockNode(
+            id: 'n4',
+            type: BlockTypes.numberedList,
+            delta: TextDelta.fromPlainText('two'),
+          ),
+        ]),
+      );
+      addTearDown(numberedController.dispose);
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 400,
+            height: 600,
+            child: BlockEditorWidget(controller: numberedController),
+          ),
+        ),
+      );
+      final widgets = tester
+          .widgetList<NumberedListWidget>(find.byType(NumberedListWidget))
+          .toList();
+      expect(widgets.map((widget) => widget.number), [1, 1, 2, 2]);
     });
   });
 }

@@ -1,4 +1,5 @@
 import 'package:block_editor/block_editor.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -11,8 +12,31 @@ Widget wrap(Widget child) {
 }
 
 Future<void> activateTableCell(WidgetTester tester, String text) async {
+  await hoverTableCell(tester, text);
   await tester.tap(find.widgetWithText(TextField, text));
   await tester.pump();
+  await tester.pump();
+}
+
+Future<void> hoverTableCell(WidgetTester tester, String text) async {
+  final finder = find.widgetWithText(TextField, text);
+  await tester.sendEventToBinding(
+    PointerHoverEvent(
+      position: tester.getCenter(finder),
+      kind: PointerDeviceKind.mouse,
+    ),
+  );
+  await tester.pump();
+  await tester.pump();
+}
+
+Future<void> hoverOutsideEditor(WidgetTester tester) async {
+  await tester.sendEventToBinding(
+    const PointerHoverEvent(
+      position: Offset(790, 590),
+      kind: PointerDeviceKind.mouse,
+    ),
+  );
   await tester.pump();
 }
 
@@ -159,7 +183,7 @@ void main() {
         ),
       );
       final padding = tester.widget<Padding>(find.byType(Padding).first);
-      expect(padding.padding, const EdgeInsets.only(left: 48.0));
+      expect(padding.padding, const EdgeInsetsDirectional.only(start: 56.0));
     });
 
     testWidgets('emits TapEvent on tap', (tester) async {
@@ -244,6 +268,7 @@ void main() {
             blockId: 'b1',
             delta: helloDelta,
             checked: false,
+            attributes: const {},
             onEvent: (_) {},
           ),
         ),
@@ -258,6 +283,7 @@ void main() {
             blockId: 'b1',
             delta: helloDelta,
             checked: true,
+            attributes: const {},
             onEvent: (_) {},
           ),
         ),
@@ -275,6 +301,7 @@ void main() {
             blockId: 'b1',
             delta: helloDelta,
             checked: false,
+            attributes: const {},
             onEvent: (e) => received = e,
           ),
         ),
@@ -294,6 +321,7 @@ void main() {
             blockId: 'b1',
             delta: helloDelta,
             checked: true,
+            attributes: const {},
             onEvent: (e) => received = e,
           ),
         ),
@@ -310,12 +338,30 @@ void main() {
             blockId: 'b1',
             delta: helloDelta,
             checked: false,
+            attributes: const {},
             onEvent: (e) => received = e,
           ),
         ),
       );
       await tester.tap(find.text('hello', findRichText: true));
       expect(received, isA<TapEvent>());
+    });
+
+    testWidgets('applies indent padding', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          TodoWidget(
+            blockId: 'b1',
+            delta: helloDelta,
+            checked: false,
+            attributes: const {'indent': 2},
+            onEvent: (_) {},
+          ),
+        ),
+      );
+
+      final padding = tester.widget<Padding>(find.byType(Padding).first);
+      expect(padding.padding, const EdgeInsetsDirectional.only(start: 56.0));
     });
 
     testWidgets('checked state renders strikethrough on text', (tester) async {
@@ -325,6 +371,7 @@ void main() {
             blockId: 'b1',
             delta: helloDelta,
             checked: true,
+            attributes: const {},
             onEvent: (_) {},
           ),
         ),
@@ -395,6 +442,30 @@ void main() {
       expect(find.text('Apache-2.0', findRichText: true), findsOneWidget);
     });
 
+    testWidgets('renders inline markdown in inactive editable cells', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          TableWidget(
+            blockId: 'table1',
+            headers: const ['Name'],
+            rows: const [
+              ['**Bold** and *soft*'],
+            ],
+            alignments: const [],
+            onEvent: (_) {},
+          ),
+        ),
+      );
+
+      expect(find.text('Bold and soft', findRichText: true), findsOneWidget);
+      final textField = tester.widget<TextField>(
+        find.widgetWithText(TextField, '**Bold** and *soft*'),
+      );
+      expect(textField.maxLines, isNull);
+    });
+
     testWidgets('shrink-wraps narrow tables instead of filling the row', (
       tester,
     ) async {
@@ -450,6 +521,38 @@ void main() {
         find.byTooltip('Add column right'),
       );
       expect(columnControlRect.bottom, lessThan(tableRect.top));
+    });
+
+    testWidgets('hides table action controls outside table hover', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 500,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A', 'B'],
+              rows: const [
+                ['1', '2'],
+              ],
+              alignments: const [],
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byTooltip('Add column right'), findsNothing);
+      expect(find.byTooltip('Add row below'), findsNothing);
+
+      await hoverTableCell(tester, '1');
+      expect(find.byTooltip('Add column right'), findsOneWidget);
+      expect(find.byTooltip('Add row below'), findsOneWidget);
+
+      await hoverOutsideEditor(tester);
+      expect(find.byTooltip('Add column right'), findsNothing);
+      expect(find.byTooltip('Add row below'), findsNothing);
     });
 
     testWidgets('emits TableCellChangedEvent when a cell is edited', (
@@ -574,6 +677,44 @@ void main() {
       const e = CheckboxToggledEvent(blockId: 'b1', checked: true);
       expect(e.blockId, 'b1');
       expect(e.checked, isTrue);
+    });
+
+    test('CodeBlockChangedEvent carries blockId and text', () {
+      const e = CodeBlockChangedEvent(blockId: 'code1', text: 'print(1);');
+      expect(e.blockId, 'code1');
+      expect(e.text, 'print(1);');
+    });
+
+    test('MathBlockChangedEvent carries blockId and text', () {
+      const e = MathBlockChangedEvent(blockId: 'math1', text: 'E = mc^2');
+      expect(e.blockId, 'math1');
+      expect(e.text, 'E = mc^2');
+    });
+
+    test('MermaidBlockChangedEvent carries blockId and text', () {
+      const e = MermaidBlockChangedEvent(blockId: 'diagram1', text: 'graph TD');
+      expect(e.blockId, 'diagram1');
+      expect(e.text, 'graph TD');
+    });
+
+    test('TableColumnAlignmentChangedEvent carries blockId and alignment', () {
+      const e = TableColumnAlignmentChangedEvent(
+        blockId: 'table1',
+        columnIndex: 1,
+        alignment: 'right',
+      );
+      expect(e.blockId, 'table1');
+      expect(e.columnIndex, 1);
+      expect(e.alignment, 'right');
+    });
+
+    test('RawMarkdownChangedEvent carries blockId and text', () {
+      const e = RawMarkdownChangedEvent(
+        blockId: 'raw1',
+        text: '<div>raw</div>',
+      );
+      expect(e.blockId, 'raw1');
+      expect(e.text, '<div>raw</div>');
     });
   });
 }

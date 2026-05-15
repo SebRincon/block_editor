@@ -71,6 +71,7 @@ final class H1Block extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Heading 1',
     group: 'Basic',
+    description: 'h1, #, large section title',
     icon: const Icon(Icons.title),
     onSelected: () {},
   );
@@ -109,6 +110,7 @@ final class H2Block extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Heading 2',
     group: 'Basic',
+    description: 'h2, ##, section title',
     icon: const Icon(Icons.text_fields),
     onSelected: () {},
   );
@@ -147,6 +149,124 @@ final class H3Block extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Heading 3',
     group: 'Basic',
+    description: 'h3, ###, subsection title',
+    icon: const Icon(Icons.short_text),
+    onSelected: () {},
+  );
+
+  @override
+  String slashCommandGroup() => 'Basic';
+}
+
+/// [BlockPlugin] for [BlockTypes.heading4].
+final class H4Block extends BlockPlugin {
+  /// Creates an [H4Block].
+  H4Block();
+
+  @override
+  String get blockType => BlockTypes.heading4;
+
+  @override
+  Widget build(
+    BlockNode node,
+    EditorSelection selection,
+    void Function(BlockEvent) onEvent,
+  ) => H4Widget(
+    blockId: node.id,
+    delta: node.delta ?? TextDelta.empty(),
+    selection: selection,
+    onEvent: onEvent,
+  );
+
+  @override
+  Map<String, dynamic> serialize(BlockNode node) => node.toJson();
+
+  @override
+  BlockNode deserialize(Map<String, dynamic> json) => BlockNode.fromJson(json);
+
+  @override
+  SlashCommandConfig slashCommandItem() => SlashCommandConfig(
+    label: 'Heading 4',
+    group: 'Basic',
+    description: 'h4, ####, detail heading',
+    icon: const Icon(Icons.subject),
+    onSelected: () {},
+  );
+
+  @override
+  String slashCommandGroup() => 'Basic';
+}
+
+/// [BlockPlugin] for [BlockTypes.heading5].
+final class H5Block extends BlockPlugin {
+  /// Creates an [H5Block].
+  H5Block();
+
+  @override
+  String get blockType => BlockTypes.heading5;
+
+  @override
+  Widget build(
+    BlockNode node,
+    EditorSelection selection,
+    void Function(BlockEvent) onEvent,
+  ) => H5Widget(
+    blockId: node.id,
+    delta: node.delta ?? TextDelta.empty(),
+    selection: selection,
+    onEvent: onEvent,
+  );
+
+  @override
+  Map<String, dynamic> serialize(BlockNode node) => node.toJson();
+
+  @override
+  BlockNode deserialize(Map<String, dynamic> json) => BlockNode.fromJson(json);
+
+  @override
+  SlashCommandConfig slashCommandItem() => SlashCommandConfig(
+    label: 'Heading 5',
+    group: 'Basic',
+    description: 'h5, #####, minor heading',
+    icon: const Icon(Icons.notes),
+    onSelected: () {},
+  );
+
+  @override
+  String slashCommandGroup() => 'Basic';
+}
+
+/// [BlockPlugin] for [BlockTypes.heading6].
+final class H6Block extends BlockPlugin {
+  /// Creates an [H6Block].
+  H6Block();
+
+  @override
+  String get blockType => BlockTypes.heading6;
+
+  @override
+  Widget build(
+    BlockNode node,
+    EditorSelection selection,
+    void Function(BlockEvent) onEvent,
+  ) => H6Widget(
+    blockId: node.id,
+    delta: node.delta ?? TextDelta.empty(),
+    selection: selection,
+    onEvent: onEvent,
+  );
+
+  @override
+  Map<String, dynamic> serialize(BlockNode node) => node.toJson();
+
+  @override
+  BlockNode deserialize(Map<String, dynamic> json) => BlockNode.fromJson(json);
+
+  @override
+  SlashCommandConfig slashCommandItem() => SlashCommandConfig(
+    label: 'Heading 6',
+    group: 'Basic',
+    description: 'h6, ######, tiny heading',
     icon: const Icon(Icons.short_text),
     onSelected: () {},
   );
@@ -186,6 +306,7 @@ final class BulletListBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Bullet List',
     group: 'Basic',
+    description: '-, *, unordered list',
     icon: const Icon(Icons.format_list_bulleted),
     onSelected: () {},
   );
@@ -226,6 +347,7 @@ final class NumberedListBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Numbered List',
     group: 'Basic',
+    description: '1., ordered list',
     icon: const Icon(Icons.format_list_numbered),
     onSelected: () {},
   );
@@ -251,6 +373,7 @@ final class TodoBlock extends BlockPlugin {
     blockId: node.id,
     delta: node.delta ?? TextDelta.empty(),
     checked: node.attributes['checked'] as bool? ?? false,
+    attributes: node.attributes,
     selection: selection,
     onEvent: onEvent,
   );
@@ -265,6 +388,7 @@ final class TodoBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'To-do',
     group: 'Basic',
+    description: 'checkbox, task, []',
     icon: const Icon(Icons.check_box_outlined),
     onSelected: () {},
   );
@@ -376,6 +500,120 @@ final class TableBlock extends BlockPlugin {
     label: 'Table',
     group: 'Advanced',
     icon: const Icon(Icons.table_chart_outlined),
+    onSelected: () {},
+  );
+
+  @override
+  String slashCommandGroup() => 'Advanced';
+}
+
+/// [BlockPlugin] for [BlockTypes.math].
+final class MathBlock extends BlockPlugin {
+  /// Creates a [MathBlock].
+  MathBlock();
+
+  @override
+  String get blockType => BlockTypes.math;
+
+  @override
+  Widget build(
+    BlockNode node,
+    EditorSelection selection,
+    void Function(BlockEvent) onEvent,
+  ) => MathBlockWidget(
+    blockId: node.id,
+    delta: node.delta ?? TextDelta.empty(),
+    onEvent: onEvent,
+  );
+
+  @override
+  Map<String, dynamic> serialize(BlockNode node) => node.toJson();
+
+  @override
+  BlockNode deserialize(Map<String, dynamic> json) => BlockNode.fromJson(json);
+
+  @override
+  SlashCommandConfig slashCommandItem() => SlashCommandConfig(
+    label: 'Math',
+    group: 'Embeds',
+    description: r'Equation block, LaTeX, $$',
+    icon: const Icon(Icons.functions),
+    onSelected: () {},
+  );
+
+  @override
+  String slashCommandGroup() => 'Embeds';
+}
+
+/// [BlockPlugin] for [BlockTypes.mermaid].
+final class MermaidBlock extends BlockPlugin {
+  /// Creates a [MermaidBlock].
+  MermaidBlock();
+
+  @override
+  String get blockType => BlockTypes.mermaid;
+
+  @override
+  Widget build(
+    BlockNode node,
+    EditorSelection selection,
+    void Function(BlockEvent) onEvent,
+  ) => MermaidBlockWidget(
+    blockId: node.id,
+    delta: node.delta ?? TextDelta.empty(),
+    onEvent: onEvent,
+  );
+
+  @override
+  Map<String, dynamic> serialize(BlockNode node) => node.toJson();
+
+  @override
+  BlockNode deserialize(Map<String, dynamic> json) => BlockNode.fromJson(json);
+
+  @override
+  SlashCommandConfig slashCommandItem() => SlashCommandConfig(
+    label: 'Mermaid',
+    group: 'Embeds',
+    description: 'Diagram block, flowchart, sequence',
+    icon: const Icon(Icons.account_tree_outlined),
+    onSelected: () {},
+  );
+
+  @override
+  String slashCommandGroup() => 'Embeds';
+}
+
+/// [BlockPlugin] for [BlockTypes.rawMarkdown].
+final class RawMarkdownBlock extends BlockPlugin {
+  /// Creates a [RawMarkdownBlock].
+  RawMarkdownBlock();
+
+  @override
+  String get blockType => BlockTypes.rawMarkdown;
+
+  @override
+  Widget build(
+    BlockNode node,
+    EditorSelection selection,
+    void Function(BlockEvent) onEvent,
+  ) => RawMarkdownWidget(
+    blockId: node.id,
+    delta: node.delta ?? TextDelta.empty(),
+    onEvent: onEvent,
+  );
+
+  @override
+  Map<String, dynamic> serialize(BlockNode node) => node.toJson();
+
+  @override
+  BlockNode deserialize(Map<String, dynamic> json) => BlockNode.fromJson(json);
+
+  @override
+  SlashCommandConfig slashCommandItem() => SlashCommandConfig(
+    label: 'Raw Markdown',
+    group: 'Advanced',
+    description: 'HTML, comments, unsupported source',
+    icon: const Icon(Icons.integration_instructions_outlined),
     onSelected: () {},
   );
 

@@ -1,9 +1,21 @@
 import 'package:block_editor/block_editor.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Widget wrap(Widget child) {
   return MaterialApp(home: Scaffold(body: child));
+}
+
+Future<void> hoverBlockContent(WidgetTester tester) async {
+  await tester.sendEventToBinding(
+    PointerHoverEvent(
+      position: tester.getCenter(find.text('block content')),
+      kind: PointerDeviceKind.mouse,
+    ),
+  );
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 120));
 }
 
 void main() {
@@ -99,7 +111,34 @@ void main() {
       expect(find.byType(Draggable<int>), findsOneWidget);
     });
 
-    testWidgets('plus control requests a block below', (tester) async {
+    testWidgets('plus control is hidden by default', (tester) async {
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(size: Size(800, 600)),
+          child: wrap(
+            BlockDragHandle(
+              index: 0,
+              blockId: 'b1',
+              onEvent: (_) {},
+              feedbackWidget: const SizedBox(),
+              onAddBlockRequested: () {},
+              child: const SizedBox(
+                width: 400,
+                height: 40,
+                child: Text('block content'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await hoverBlockContent(tester);
+      expect(find.byTooltip('Add block below'), findsNothing);
+    });
+
+    testWidgets('plus control requests a block below when enabled', (
+      tester,
+    ) async {
       var requested = false;
       await tester.pumpWidget(
         MediaQuery(
@@ -111,6 +150,7 @@ void main() {
               onEvent: (_) {},
               feedbackWidget: const SizedBox(),
               onAddBlockRequested: () => requested = true,
+              showAddBlockButton: true,
               child: const SizedBox(
                 width: 400,
                 height: 40,
@@ -121,7 +161,9 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byTooltip('Add block below'));
+      await hoverBlockContent(tester);
+      expect(find.byTooltip('Add block below'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.add));
       expect(requested, isTrue);
     });
 
@@ -151,7 +193,9 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byTooltip('Drag or open block menu'));
+      await hoverBlockContent(tester);
+      expect(find.byTooltip('Drag or open block menu'), findsNothing);
+      await tester.tap(find.byIcon(Icons.drag_indicator));
       expect(requestedBlockId, 'b1');
       expect(requestedPosition, isNotNull);
     });

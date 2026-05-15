@@ -1,5 +1,7 @@
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
 import 'package:flutter/services.dart';
@@ -76,19 +78,35 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
     );
   }
 
+  void _selectNode(BlockNode node) {
+    final length = node.delta?.plainText.length ?? 0;
+    widget.controller.updateSelection(
+      ExpandedSelection(
+        anchor: SelectionPoint(blockId: node.id, offset: 0),
+        focus: SelectionPoint(blockId: node.id, offset: length),
+      ),
+    );
+  }
+
   void _selectBlock() {
     final node = widget.controller.document.findById(widget.blockId);
     if (node == null) {
       widget.onDismiss();
       return;
     }
-    final length = node.delta?.plainText.length ?? 0;
-    widget.controller.updateSelection(
-      ExpandedSelection(
-        anchor: SelectionPoint(blockId: widget.blockId, offset: 0),
-        focus: SelectionPoint(blockId: widget.blockId, offset: length),
-      ),
-    );
+    _selectNode(node);
+    widget.onDismiss();
+  }
+
+  void _copyMarkdown() {
+    final node = widget.controller.document.findById(widget.blockId);
+    if (node == null) {
+      widget.onDismiss();
+      return;
+    }
+    _selectNode(node);
+    final markdown = BlockMarkdownCodec.encode(BlockDocument([node]));
+    unawaited(Clipboard.setData(ClipboardData(text: markdown)));
     widget.onDismiss();
   }
 
@@ -140,7 +158,7 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
 
   @override
   Widget build(BuildContext context) {
-    const mainMenuHeight = 6 * 40.0 + 8.0;
+    const mainMenuHeight = 7 * 40.0 + 8.0;
     final editorTheme = BlockEditorThemeData.fromContext(context);
     final pos = _clampedPosition(
       context,
@@ -187,6 +205,11 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
                       icon: Icons.select_all,
                       label: 'Select block',
                       onTap: _selectBlock,
+                    ),
+                    _ActionItem(
+                      icon: Icons.content_copy,
+                      label: 'Copy Markdown',
+                      onTap: _copyMarkdown,
                     ),
                     _ActionItem(
                       icon: Icons.delete_outline,

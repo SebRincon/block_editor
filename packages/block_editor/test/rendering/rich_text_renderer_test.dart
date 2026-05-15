@@ -104,7 +104,7 @@ void main() {
       );
     });
 
-    testWidgets('inline code op uses monospace font and code background', (
+    testWidgets('inline code op uses themed code font and background', (
       tester,
     ) async {
       final delta = TextDelta.fromPlainText(
@@ -114,8 +114,8 @@ void main() {
         wrap(RichTextRenderer(delta: delta, blockId: 'b1')),
       );
       final span = firstSpanFrom(tester);
-      expect(span.style!.fontFamily, 'monospace');
-      expect(span.style!.backgroundColor, const Color(0xFFEEEEEE));
+      expect(span.style!.fontFamily, 'JetBrainsMono');
+      expect(span.style!.backgroundColor, isNotNull);
     });
 
     testWidgets('link op uses link color', (tester) async {
@@ -128,6 +128,58 @@ void main() {
         wrap(RichTextRenderer(delta: delta, blockId: 'b1')),
       );
       expect(firstSpanFrom(tester).style!.color, const Color(0xFF0070F3));
+    });
+
+    testWidgets('highlight op uses Markdown highlight colors', (tester) async {
+      final delta = TextDelta.fromPlainText(
+        'marked',
+      ).applyAttributes(0, 6, const InlineAttributes(highlight: true));
+      await tester.pumpWidget(
+        wrap(RichTextRenderer(delta: delta, blockId: 'b1')),
+      );
+      final span = firstSpanFrom(tester);
+      expect(span.style!.backgroundColor, isNotNull);
+      expect(span.style!.color, const Color(0xFF222222));
+    });
+
+    testWidgets('wiki link op uses Markdown wiki-link colors', (tester) async {
+      final delta = TextDelta.fromPlainText(
+        'Daily Note',
+      ).applyAttributes(0, 10, const InlineAttributes(wikiLink: 'Daily Note'));
+      await tester.pumpWidget(
+        wrap(RichTextRenderer(delta: delta, blockId: 'b1')),
+      );
+      final span = firstSpanFrom(tester);
+      expect(span.style!.color, const Color(0xFF0070F3));
+      expect(span.style!.backgroundColor, isNotNull);
+    });
+
+    testWidgets('embedded wiki link uses embed background', (tester) async {
+      final delta = TextDelta.fromPlainText('diagram.png').applyAttributes(
+        0,
+        11,
+        const InlineAttributes(wikiLink: 'diagram.png', embed: true),
+      );
+      await tester.pumpWidget(
+        wrap(RichTextRenderer(delta: delta, blockId: 'b1')),
+      );
+      final span = firstSpanFrom(tester);
+      expect(span.style!.color, const Color(0xFF0070F3));
+      expect(span.style!.backgroundColor, isNotNull);
+    });
+
+    testWidgets('footnote op uses subdued Markdown chip colors', (
+      tester,
+    ) async {
+      final delta = TextDelta.fromPlainText(
+        '[^ref]',
+      ).applyAttributes(0, 6, const InlineAttributes(footnote: 'ref'));
+      await tester.pumpWidget(
+        wrap(RichTextRenderer(delta: delta, blockId: 'b1')),
+      );
+      final span = firstSpanFrom(tester);
+      expect(span.style!.color, const Color(0xFF888888));
+      expect(span.style!.backgroundColor, isNotNull);
     });
 
     testWidgets('underline and strikethrough combine correctly', (

@@ -10,7 +10,11 @@ void main() {
       expect(attrs.underline, isNull);
       expect(attrs.strikethrough, isNull);
       expect(attrs.inlineCode, isNull);
+      expect(attrs.highlight, isNull);
       expect(attrs.link, isNull);
+      expect(attrs.wikiLink, isNull);
+      expect(attrs.embed, isNull);
+      expect(attrs.footnote, isNull);
       expect(attrs.color, isNull);
       expect(attrs.backgroundColor, isNull);
     });
@@ -25,6 +29,8 @@ void main() {
         const InlineAttributes(link: 'https://example.com').isEmpty,
         isFalse,
       );
+      expect(const InlineAttributes(highlight: true).isEmpty, isFalse);
+      expect(const InlineAttributes(wikiLink: 'Daily Note').isEmpty, isFalse);
     });
 
     group('toJson / fromJson round-trip', () {
@@ -36,11 +42,19 @@ void main() {
         const attrs = InlineAttributes(
           bold: true,
           italic: false,
+          highlight: true,
+          wikiLink: 'Daily Note',
+          embed: true,
+          footnote: '1',
           color: '#FF0000',
         );
         final json = attrs.toJson();
         expect(json['bold'], isTrue);
         expect(json['italic'], isFalse);
+        expect(json['highlight'], isTrue);
+        expect(json['wikiLink'], 'Daily Note');
+        expect(json['embed'], isTrue);
+        expect(json['footnote'], '1');
         expect(json['color'], '#FF0000');
         expect(json.containsKey('underline'), isFalse);
       });
@@ -50,6 +64,10 @@ void main() {
           bold: true,
           underline: true,
           link: 'https://dart.dev',
+          highlight: true,
+          wikiLink: 'API',
+          embed: false,
+          footnote: 'ref',
           backgroundColor: '#FFFF00',
         );
         expect(InlineAttributes.fromJson(original.toJson()), equals(original));
@@ -69,10 +87,17 @@ void main() {
 
       test('overrides specified fields', () {
         const attrs = InlineAttributes(bold: true, italic: false);
-        final copy = attrs.copyWith(italic: true, underline: true);
+        final copy = attrs.copyWith(
+          italic: true,
+          underline: true,
+          highlight: true,
+          wikiLink: 'Note',
+        );
         expect(copy.bold, isTrue);
         expect(copy.italic, isTrue);
         expect(copy.underline, isTrue);
+        expect(copy.highlight, isTrue);
+        expect(copy.wikiLink, 'Note');
       });
     });
 

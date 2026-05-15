@@ -107,7 +107,7 @@ void main() {
   });
 
   group('FormattingToolbar — button rendering', () {
-    testWidgets('all eight buttons are present', (tester) async {
+    testWidgets('all formatting buttons are present', (tester) async {
       final ctrl = _ctrl([_para('a', 'hello world')]);
 
       await tester.pumpWidget(
@@ -124,6 +124,7 @@ void main() {
       expect(find.byIcon(Icons.format_underline), findsOneWidget);
       expect(find.byIcon(Icons.format_strikethrough), findsOneWidget);
       expect(find.byIcon(Icons.code), findsOneWidget);
+      expect(find.byIcon(Icons.highlight), findsOneWidget);
       expect(find.byIcon(Icons.link), findsOneWidget);
       expect(find.byIcon(Icons.format_color_text), findsOneWidget);
       expect(find.byIcon(Icons.format_color_fill), findsOneWidget);
@@ -197,6 +198,25 @@ void main() {
       final node = ctrl.document.findById('a')!;
       final op = node.delta!.ops.first as TextOp;
       expect(op.attributes.inlineCode, true);
+    });
+  });
+
+  group('EditorEditingOperations — applyHighlight', () {
+    test('applies highlight formatting to expanded selection', () {
+      final ctrl = _ctrl([_para('a', 'hello')]);
+      ctrl.updateSelection(
+        const ExpandedSelection(
+          anchor: SelectionPoint(blockId: 'a', offset: 0),
+          focus: SelectionPoint(blockId: 'a', offset: 5),
+        ),
+      );
+      final ops = EditorEditingOperations(ctrl);
+
+      ops.applyHighlight();
+
+      final node = ctrl.document.findById('a')!;
+      final op = node.delta!.ops.first as TextOp;
+      expect(op.attributes.highlight, true);
     });
   });
 

@@ -11,8 +11,9 @@ import 'package:block_editor/block_editor.dart';
 /// - `code` — the code string to display.
 /// - `language` — the language identifier (e.g. `'dart'`, `'python'`).
 ///
-/// Renders the code in a monospace container. When [CodeBlockConfig.showLineNumbers]
-/// is true, line numbers are shown to the left of each line. When
+/// Renders the code in a monospace multiline editor. When
+/// [CodeBlockConfig.showLineNumbers] is true, line numbers are shown to the
+/// left of each line. When
 /// [CodeBlockConfig.showLanguageSelector] is true, a tappable language label
 /// is shown in the top-right corner — tapping it emits a [CustomBlockEvent]
 /// with `eventType: 'code_language_change_requested'` carrying the current
@@ -45,6 +46,7 @@ final class CodeBlock extends BlockPlugin {
   SlashCommandConfig slashCommandItem() => SlashCommandConfig(
     label: 'Code',
     group: 'Basic',
+    description: 'code fence, ```',
     icon: const Icon(Icons.code),
     onSelected: () {},
   );
@@ -53,104 +55,213 @@ final class CodeBlock extends BlockPlugin {
   String slashCommandGroup() => 'Basic';
 }
 
-class _CodeBlockWidget extends StatelessWidget {
+class _CodeBlockWidget extends StatefulWidget {
   const _CodeBlockWidget({required this.node, required this.onEvent});
 
   final BlockNode node;
   final void Function(BlockEvent) onEvent;
 
-  static const Color _background = Color(0xFF1E1E1E);
-  static const Color _codeColor = Color(0xFFD4D4D4);
-  static const Color _lineNumberColor = Color(0xFF858585);
-  static const Color _languageLabelColor = Color(0xFF858585);
-  static const String _defaultFont = 'monospace';
+  @override
+  State<_CodeBlockWidget> createState() => _CodeBlockWidgetState();
+}
 
-  String get _code =>
+class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+  ValueChanged<bool>? _embeddedInputFocusChanged;
+  bool _reportedFocus = false;
+
+  String get _code => _controller.text;
+  String get _language =>
+      widget.node.attributes['language'] as String? ?? 'plaintext';
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _codeForNode(widget.node));
+    _focusNode = FocusNode();
+    _focusNode.addListener(_handleFocusChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _embeddedInputFocusChanged = BlockEditorScope.maybeOf(
+      context,
+    )?.onEmbeddedInputFocusChanged;
+  }
+
+  @override
+  void didUpdateWidget(covariant _CodeBlockWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextCode = _codeForNode(widget.node);
+    if (!_focusNode.hasFocus && nextCode != _controller.text) {
+      _controller.text = nextCode;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_reportedFocus) {
+      _embeddedInputFocusChanged?.call(false);
+    }
+    _focusNode.removeListener(_handleFocusChanged);
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleFocusChanged() {
+    final focused = _focusNode.hasFocus;
+    if (_reportedFocus == focused) return;
+    _reportedFocus = focused;
+    _embeddedInputFocusChanged?.call(focused);
+  }
+
+  void _handleChanged(String value) {
+    setState(() {});
+    widget.onEvent(CodeBlockChangedEvent(blockId: widget.node.id, text: value));
+  }
+
+  int get _lineCount {
+    if (_code.isEmpty) return 1;
+    return '\n'.allMatches(_code).length + 1;
+  }
+
+  static String _codeForNode(BlockNode node) =>
       node.delta?.plainText ?? (node.attributes['code'] as String? ?? '');
-  String get _language => node.attributes['language'] as String? ?? 'plaintext';
 
   @override
   Widget build(BuildContext context) {
-    final config = BlockEditorScope.maybeOf(context)?.codeConfig;
+    final scope = BlockEditorScope.maybeOf(context);
+    final config = scope?.codeConfig;
+    final readOnly = scope?.readOnly ?? false;
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
     final fontSize = config?.fontSize ?? 14.0;
+    final fontFamily = config?.fontFamily ?? 'JetBrainsMono';
+    final fontFamilyFallback =
+        config?.fontFamilyFallback ?? const ['MesloLGS NF', 'monospace'];
     final showLineNumbers = config?.showLineNumbers ?? true;
     final showLanguageSelector = config?.showLanguageSelector ?? true;
+    final textStyle = TextStyle(
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: fontSize,
+      color: markdownTheme.codeBlockForeground,
+      height: 1.5,
+      letterSpacing: 0,
+    );
 
-    final lines = _code.split('\n');
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: _background,
-        borderRadius: BorderRadius.all(Radius.circular(6)),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: markdownTheme.codeBlockBackground,
+        borderRadius: BorderRadius.all(Radius.circular(editorTheme.radiusMd)),
+        border: Border.all(color: markdownTheme.codeBlockBorder),
       ),
-      child: Stack(
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (showLanguageSelector) const SizedBox(height: 20),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (showLineNumbers)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: List.generate(
-                          lines.length,
-                          (i) => Text(
-                            '${i + 1}',
-                            style: TextStyle(
-                              fontFamily: _defaultFont,
-                              fontSize: fontSize,
-                              color: _lineNumberColor,
-                              height: 1.5,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (showLanguageSelector) const SizedBox(height: 24),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (showLineNumbers)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: List.generate(
+                            _lineCount,
+                            (i) => Text(
+                              '${i + 1}',
+                              style: TextStyle(
+                                fontFamily: fontFamily,
+                                fontFamilyFallback: fontFamilyFallback,
+                                fontSize: fontSize,
+                                color: markdownTheme.codeBlockMutedForeground,
+                                height: 1.5,
+                              ),
                             ),
                           ),
                         ),
                       ),
+                    Expanded(
+                      child: readOnly
+                          ? SelectableText(_code, style: textStyle)
+                          : Material(
+                              color: Colors.transparent,
+                              child: TextField(
+                                controller: _controller,
+                                focusNode: _focusNode,
+                                minLines: _lineCount,
+                                maxLines: null,
+                                keyboardType: TextInputType.multiline,
+                                textInputAction: TextInputAction.newline,
+                                style: textStyle,
+                                cursorColor: editorTheme.cursor,
+                                decoration: const InputDecoration(
+                                  isDense: true,
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                                onChanged: _handleChanged,
+                              ),
+                            ),
                     ),
-                  Expanded(
-                    child: Text(
-                      _code,
-                      style: TextStyle(
-                        fontFamily: _defaultFont,
-                        fontSize: fontSize,
-                        color: _codeColor,
-                        height: 1.5,
+                  ],
+                ),
+              ],
+            ),
+            if (showLanguageSelector)
+              Positioned(
+                top: 0,
+                right: 0,
+                child: GestureDetector(
+                  onTap: () => widget.onEvent(
+                    CustomBlockEvent(
+                      blockId: widget.node.id,
+                      eventType: 'code_language_change_requested',
+                      payload: _language,
+                    ),
+                  ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: editorTheme.background.withValues(alpha: 0.66),
+                      border: Border.all(
+                        color: markdownTheme.codeBlockBorder.withValues(
+                          alpha: 0.72,
+                        ),
+                      ),
+                      borderRadius: BorderRadius.circular(editorTheme.radiusSm),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      child: Text(
+                        _language,
+                        style: TextStyle(
+                          fontFamily: fontFamily,
+                          fontFamilyFallback: fontFamilyFallback,
+                          fontSize: 12,
+                          color: markdownTheme.codeBlockMutedForeground,
+                          height: 1,
+                        ),
                       ),
                     ),
                   ),
-                ],
-              ),
-            ],
-          ),
-          if (showLanguageSelector)
-            Positioned(
-              top: 0,
-              right: 0,
-              child: GestureDetector(
-                onTap: () => onEvent(
-                  CustomBlockEvent(
-                    blockId: node.id,
-                    eventType: 'code_language_change_requested',
-                    payload: _language,
-                  ),
-                ),
-                child: Text(
-                  _language,
-                  style: const TextStyle(
-                    fontFamily: _defaultFont,
-                    fontSize: 12,
-                    color: _languageLabelColor,
-                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

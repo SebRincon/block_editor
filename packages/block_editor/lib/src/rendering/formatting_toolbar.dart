@@ -45,6 +45,7 @@ class _SelectionAttributes {
     required this.underline,
     required this.strikethrough,
     required this.inlineCode,
+    required this.highlight,
     required this.link,
     required this.textColor,
     required this.backgroundColor,
@@ -55,6 +56,7 @@ class _SelectionAttributes {
   final _AttributeState underline;
   final _AttributeState strikethrough;
   final _AttributeState inlineCode;
+  final _AttributeState highlight;
   final _AttributeState link;
   final _AttributeState textColor;
   final _AttributeState backgroundColor;
@@ -105,6 +107,7 @@ class _SelectionAttributes {
         underline: _AttributeState.inactive,
         strikethrough: _AttributeState.inactive,
         inlineCode: _AttributeState.inactive,
+        highlight: _AttributeState.inactive,
         link: _AttributeState.inactive,
         textColor: _AttributeState.inactive,
         backgroundColor: _AttributeState.inactive,
@@ -117,6 +120,7 @@ class _SelectionAttributes {
       underline: _stateFor(ops, (a) => a.underline == true),
       strikethrough: _stateFor(ops, (a) => a.strikethrough == true),
       inlineCode: _stateFor(ops, (a) => a.inlineCode == true),
+      highlight: _stateFor(ops, (a) => a.highlight == true),
       link: _stateFor(ops, (a) => a.link != null),
       textColor: _stateFor(ops, (a) => a.color != null),
       backgroundColor: _stateFor(ops, (a) => a.backgroundColor != null),
@@ -163,7 +167,7 @@ class _SelectionAttributes {
 /// anchor block's render box. When narrow or when no anchor position can be
 /// resolved, it pins to the bottom of the editor's own render box.
 ///
-/// **Attribute state** — each of the eight buttons reflects whether the
+/// **Attribute state** — each formatting button reflects whether the
 /// entire selection has the attribute (active), none of it does (inactive),
 /// or only part does (mixed).
 ///
@@ -218,7 +222,7 @@ class FormattingToolbar extends StatefulWidget {
 }
 
 class _FormattingToolbarState extends State<FormattingToolbar> {
-  static const double _toolbarWidth = 336.0;
+  static const double _toolbarWidth = 374.0;
   static const double _toolbarHeight = 44.0;
 
   Offset _computePosition(BuildContext context) {
@@ -443,6 +447,12 @@ class _FormattingToolbarControlsState extends State<FormattingToolbarControls> {
             label: 'Inline code',
             state: attrs.inlineCode,
             onPressed: widget.ops.applyInlineCode,
+          ),
+          _ToolbarButton(
+            icon: Icons.highlight,
+            label: 'Highlight',
+            state: attrs.highlight,
+            onPressed: widget.ops.applyHighlight,
           ),
           _ToolbarButton(
             icon: Icons.link,

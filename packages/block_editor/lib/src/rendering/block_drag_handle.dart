@@ -25,6 +25,7 @@ class BlockDragHandle extends StatefulWidget {
     this.readOnly = false,
     this.onActionMenuRequested,
     this.onAddBlockRequested,
+    this.showAddBlockButton = false,
   });
 
   /// The current index of this block in the root block list.
@@ -54,6 +55,9 @@ class BlockDragHandle extends StatefulWidget {
   /// Called when the user requests a new paragraph below this block.
   final VoidCallback? onAddBlockRequested;
 
+  /// Whether to render the inline add-block button next to the drag handle.
+  final bool showAddBlockButton;
+
   @override
   State<BlockDragHandle> createState() => _BlockDragHandleState();
 }
@@ -79,23 +83,27 @@ class _BlockDragHandleState extends State<BlockDragHandle> {
           return widget.child;
         }
 
-        final controls = AnimatedOpacity(
-          opacity: _hovering ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 120),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Tooltip(
-                message: 'Add block below',
-                child: _BlockControlButton(
-                  icon: Icons.add,
-                  onTap: widget.onAddBlockRequested,
-                ),
-              ),
-              const SizedBox(width: 2),
-              Tooltip(
-                message: 'Drag or open block menu',
-                child: MouseRegion(
+        final controls = IgnorePointer(
+          ignoring: !_hovering,
+          child: AnimatedOpacity(
+            opacity: _hovering ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 120),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.showAddBlockButton) ...[
+                  Tooltip(
+                    message: 'Add block below',
+                    waitDuration: const Duration(milliseconds: 650),
+                    preferBelow: false,
+                    child: _BlockControlButton(
+                      icon: Icons.add,
+                      onTap: widget.onAddBlockRequested,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                ],
+                MouseRegion(
                   cursor: SystemMouseCursors.grab,
                   child: Draggable<int>(
                     data: widget.index,
@@ -111,8 +119,8 @@ class _BlockDragHandleState extends State<BlockDragHandle> {
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
 
@@ -124,7 +132,7 @@ class _BlockDragHandleState extends State<BlockDragHandle> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                width: 50,
+                width: widget.showAddBlockButton ? 50 : 26,
                 child: Padding(
                   padding: const EdgeInsets.only(top: 1),
                   child: controls,

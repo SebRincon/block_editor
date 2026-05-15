@@ -9,6 +9,9 @@ abstract final class BlockTypes {
   static const String heading1 = 'heading1';
   static const String heading2 = 'heading2';
   static const String heading3 = 'heading3';
+  static const String heading4 = 'heading4';
+  static const String heading5 = 'heading5';
+  static const String heading6 = 'heading6';
 
   static const String bulletList = 'bulletList';
   static const String numberedList = 'numberedList';
@@ -17,6 +20,9 @@ abstract final class BlockTypes {
   static const String quote = 'quote';
   static const String callout = 'callout';
   static const String code = 'code';
+  static const String math = 'math';
+  static const String mermaid = 'mermaid';
+  static const String rawMarkdown = 'rawMarkdown';
   static const String divider = 'divider';
   static const String table = 'table';
 

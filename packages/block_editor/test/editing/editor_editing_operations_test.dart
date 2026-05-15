@@ -140,6 +140,85 @@ void main() {
       expect(sel.point.offset, 2);
       controller.dispose();
     });
+
+    test('space after Markdown heading marker transforms the block', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('###');
+      controller.append(node);
+      controller.collapseSelection(node.id, 3);
+
+      ops.insertCharacter(' ');
+
+      final updated = controller.document.findById(node.id)!;
+      expect(updated.type, BlockTypes.heading3);
+      expect(updated.delta?.plainText, '');
+      final sel = controller.selection as CollapsedSelection;
+      expect(sel.point.offset, 0);
+      controller.dispose();
+    });
+
+    test('space after Markdown list markers transforms list blocks', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final bullet = plainBlock('-');
+      final numbered = plainBlock('1.');
+      final todo = plainBlock('[]');
+      controller
+        ..append(bullet)
+        ..append(numbered)
+        ..append(todo);
+
+      controller.collapseSelection(bullet.id, 1);
+      ops.insertCharacter(' ');
+      controller.collapseSelection(numbered.id, 2);
+      ops.insertCharacter(' ');
+      controller.collapseSelection(todo.id, 2);
+      ops.insertCharacter(' ');
+
+      expect(
+        controller.document.findById(bullet.id)!.type,
+        BlockTypes.bulletList,
+      );
+      expect(
+        controller.document.findById(numbered.id)!.type,
+        BlockTypes.numberedList,
+      );
+      final todoBlock = controller.document.findById(todo.id)!;
+      expect(todoBlock.type, BlockTypes.todo);
+      expect(todoBlock.attributes['checked'], isFalse);
+      controller.dispose();
+    });
+
+    test(
+      'space after source markers transforms code, mermaid, and math blocks',
+      () {
+        final controller = makeController();
+        final ops = EditorEditingOperations(controller);
+        final code = plainBlock('```');
+        final mermaid = plainBlock('```mermaid');
+        final math = plainBlock(r'$$');
+        controller
+          ..append(code)
+          ..append(mermaid)
+          ..append(math);
+
+        controller.collapseSelection(code.id, 3);
+        ops.insertCharacter(' ');
+        controller.collapseSelection(mermaid.id, 10);
+        ops.insertCharacter(' ');
+        controller.collapseSelection(math.id, 2);
+        ops.insertCharacter(' ');
+
+        expect(controller.document.findById(code.id)!.type, BlockTypes.code);
+        expect(
+          controller.document.findById(mermaid.id)!.type,
+          BlockTypes.mermaid,
+        );
+        expect(controller.document.findById(math.id)!.type, BlockTypes.math);
+        controller.dispose();
+      },
+    );
   });
 
   group('backspace', () {
@@ -316,6 +395,21 @@ void main() {
       ops.insertNewline();
       expect(controller.document.blocks.length, 1);
       expect(controller.document.blocks.first.type, BlockTypes.paragraph);
+      controller.dispose();
+    });
+
+    test('splitting deep heading creates a paragraph below', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('deep heading', type: BlockTypes.heading6);
+      controller.append(node);
+      controller.collapseSelection(node.id, 4);
+
+      ops.insertNewline();
+
+      expect(controller.document.blocks.first.type, BlockTypes.heading6);
+      expect(controller.document.blocks[1].type, BlockTypes.paragraph);
+      expect(controller.document.blocks[1].delta?.plainText, ' heading');
       controller.dispose();
     });
 

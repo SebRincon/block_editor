@@ -288,6 +288,46 @@ void main() {
       expect(filteredCount, lessThan(allCount));
       expect(filteredCount, greaterThan(0));
     });
+
+    test('filter matches command descriptions for Markdown aliases', () {
+      final ctrl = _ctrl([_emptyPara('a')]);
+      final ops = EditorEditingOperations(ctrl);
+      final editorKey = GlobalKey();
+      final editorFocusNode = FocusNode();
+
+      final menu = _SlashMenuEntryCounter(
+        controller: ctrl,
+        ops: ops,
+        editorKey: editorKey,
+        editorFocusNode: editorFocusNode,
+      );
+
+      menu.applyFilter('h1');
+
+      expect(
+        menu.filteredEntries.map((entry) => entry.blockType),
+        contains(BlockTypes.heading1),
+      );
+    });
+
+    test('registered commands include Mermaid and math blocks', () {
+      final ctrl = _ctrl([_emptyPara('a')]);
+      final ops = EditorEditingOperations(ctrl);
+      final editorKey = GlobalKey();
+      final editorFocusNode = FocusNode();
+
+      final menu = _SlashMenuEntryCounter(
+        controller: ctrl,
+        ops: ops,
+        editorKey: editorKey,
+        editorFocusNode: editorFocusNode,
+      );
+
+      expect(
+        menu.allEntries.map((entry) => entry.blockType),
+        containsAll([BlockTypes.math, BlockTypes.mermaid]),
+      );
+    });
   });
 
   group('SlashCommandMenu — trigger condition logic', () {
@@ -345,21 +385,33 @@ class _SlashMenuEntryCounter {
       if (config == null || config.trigger != '/') continue;
       if (seen.contains(plugin.blockType)) continue;
       seen.add(plugin.blockType);
-      entries.add(_TestEntry(blockType: plugin.blockType, label: config.label));
+      entries.add(
+        _TestEntry(
+          blockType: plugin.blockType,
+          label: config.label,
+          description: config.description,
+        ),
+      );
     }
     return entries;
   }
 
   void applyFilter(String query) {
     final lower = query.toLowerCase();
-    _filtered = _all
-        .where((e) => e.label.toLowerCase().contains(lower))
-        .toList();
+    _filtered = _all.where((e) {
+      return e.label.toLowerCase().contains(lower) ||
+          (e.description?.toLowerCase().contains(lower) ?? false);
+    }).toList();
   }
 }
 
 class _TestEntry {
-  const _TestEntry({required this.blockType, required this.label});
+  const _TestEntry({
+    required this.blockType,
+    required this.label,
+    this.description,
+  });
   final String blockType;
   final String label;
+  final String? description;
 }

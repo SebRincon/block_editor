@@ -33,11 +33,13 @@ TextSpan buildMeasurementSpan(
   TextDelta delta,
   TextStyle baseStyle,
   Map<String, String> variables,
+  MarkdownDocumentThemeData markdownTheme,
 ) {
   final children = <TextSpan>[];
   for (final op in delta.ops) {
     if (op is TextOp) {
       final attrs = op.attributes;
+      final isCode = attrs.inlineCode ?? false;
       Color? color;
       if (attrs.color != null) {
         final hex = attrs.color!.replaceFirst('#', '');
@@ -49,10 +51,14 @@ TextSpan buildMeasurementSpan(
         bgColor = Color(int.parse('FF$hex', radix: 16));
       }
       final isLink = attrs.link != null && attrs.link!.isNotEmpty;
+      final isWikiLink = attrs.wikiLink != null && attrs.wikiLink!.isNotEmpty;
+      final isEmbed = isWikiLink && attrs.embed == true;
+      final isFootnote = attrs.footnote != null && attrs.footnote!.isNotEmpty;
+      final styleBase = isCode ? markdownTheme.inlineCodeStyle : baseStyle;
       children.add(
         TextSpan(
           text: op.text,
-          style: baseStyle.copyWith(
+          style: styleBase.copyWith(
             fontWeight: attrs.bold == true
                 ? FontWeight.bold
                 : attrs.bold == false
@@ -68,10 +74,30 @@ TextSpan buildMeasurementSpan(
               if (attrs.strikethrough ?? false) TextDecoration.lineThrough,
             ]),
             fontFamily: (attrs.inlineCode ?? false)
-                ? 'monospace'
+                ? markdownTheme.inlineCodeStyle.fontFamily ?? 'monospace'
                 : baseStyle.fontFamily,
-            color: isLink ? const Color(0xFF0070F3) : color,
-            backgroundColor: bgColor,
+            color: isLink
+                ? markdownTheme.linkColor
+                : isWikiLink
+                ? markdownTheme.wikiLinkColor
+                : isFootnote
+                ? markdownTheme.footnoteColor
+                : isCode
+                ? markdownTheme.inlineCodeForeground
+                : attrs.highlight == true
+                ? markdownTheme.highlightForeground
+                : color,
+            backgroundColor: isCode
+                ? markdownTheme.inlineCodeBackground
+                : attrs.highlight == true
+                ? markdownTheme.highlightBackground
+                : isEmbed
+                ? markdownTheme.embedBackground
+                : isWikiLink
+                ? markdownTheme.wikiLinkBackground
+                : isFootnote
+                ? markdownTheme.footnoteBackground
+                : bgColor,
           ),
         ),
       );

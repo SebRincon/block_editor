@@ -110,6 +110,63 @@ final class TableColumnDeletedEvent extends BlockEvent {
   final int index;
 }
 
+/// Emitted when the user changes a Markdown table column alignment.
+final class TableColumnAlignmentChangedEvent extends BlockEvent {
+  /// Creates a [TableColumnAlignmentChangedEvent] for the table identified by
+  /// [blockId].
+  const TableColumnAlignmentChangedEvent({
+    required super.blockId,
+    required this.columnIndex,
+    required this.alignment,
+  });
+
+  /// The column whose alignment should change.
+  final int columnIndex;
+
+  /// One of `left`, `center`, `right`, or null/empty for default alignment.
+  final String? alignment;
+}
+
+/// Emitted when an editable fenced-code block changes.
+final class CodeBlockChangedEvent extends BlockEvent {
+  /// Creates a [CodeBlockChangedEvent] for the code block identified by
+  /// [blockId].
+  const CodeBlockChangedEvent({required super.blockId, required this.text});
+
+  /// The new raw code text.
+  final String text;
+}
+
+/// Emitted when an editable display math block changes.
+final class MathBlockChangedEvent extends BlockEvent {
+  /// Creates a [MathBlockChangedEvent] for the math block identified by
+  /// [blockId].
+  const MathBlockChangedEvent({required super.blockId, required this.text});
+
+  /// The new raw math source text.
+  final String text;
+}
+
+/// Emitted when an editable Mermaid diagram block changes.
+final class MermaidBlockChangedEvent extends BlockEvent {
+  /// Creates a [MermaidBlockChangedEvent] for the Mermaid block identified by
+  /// [blockId].
+  const MermaidBlockChangedEvent({required super.blockId, required this.text});
+
+  /// The new raw Mermaid source text.
+  final String text;
+}
+
+/// Emitted when an editable raw Markdown preservation block changes.
+final class RawMarkdownChangedEvent extends BlockEvent {
+  /// Creates a [RawMarkdownChangedEvent] for the raw Markdown block identified
+  /// by [blockId].
+  const RawMarkdownChangedEvent({required super.blockId, required this.text});
+
+  /// The new raw Markdown source text.
+  final String text;
+}
+
 /// Emitted when the user drags a block to a new position.
 ///
 /// [newIndex] is the target index in the root block list after the move.

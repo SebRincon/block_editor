@@ -5,17 +5,18 @@ import 'package:block_editor/block_editor.dart';
 
 /// [BlockPlugin] for [BlockTypes.callout].
 ///
-/// Stores the variant in `attributes['variant']`. Valid values are `'info'`,
-/// `'warning'`, and `'error'`. Defaults to `'info'` when absent.
+/// Stores the variant in `attributes['variant']`. Common values include
+/// `'note'`, `'info'`, `'warning'`, `'error'`, `'tip'`, and `'success'`.
+/// Defaults to `'info'` when absent.
 ///
 /// The block content is stored as a [TextDelta] on the [BlockNode], so full
 /// inline formatting is supported. The content is rendered via
 /// [RichTextRenderer].
 ///
-/// Colours, icons, and border radius are read from [CalloutBlockConfig] via
-/// [BlockEditorScope]. When config values are null, falls back to
-/// [Theme.of(context).colorScheme] so the block responds correctly to both
-/// light and dark themes.
+/// Colors, icons, and border radius are read from [CalloutBlockConfig] via
+/// [BlockEditorScope]. When config values are null, falls back to the shared
+/// [MarkdownDocumentThemeData] tokens so callouts stay aligned with the
+/// document surface in light and dark themes.
 final class CalloutBlock extends BlockPlugin {
   /// Creates a [CalloutBlock].
   CalloutBlock();
@@ -65,24 +66,24 @@ class _CalloutBlockWidget extends StatelessWidget {
   final EditorSelection selection;
   final void Function(BlockEvent) onEvent;
 
-  static const Widget _infoIcon = Icon(Icons.info);
-  static const Widget _warningIcon = Icon(Icons.warning);
-  static const Widget _errorIcon = Icon(Icons.error);
+  static const Widget _infoIcon = Icon(Icons.info_outline_rounded);
+  static const Widget _warningIcon = Icon(Icons.warning_amber_rounded);
+  static const Widget _errorIcon = Icon(Icons.error_outline_rounded);
 
   String get _variant => node.attributes['variant'] as String? ?? 'info';
 
-  Color _resolveColor(BuildContext context, CalloutBlockConfig? config) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Color _resolveColor(
+    MarkdownDocumentThemeData markdownTheme,
+    CalloutBlockConfig? config,
+  ) {
     switch (_variant) {
       case 'warning':
-        return config?.warningColor ??
-            (isDark ? const Color(0xFF3D2E00) : const Color(0xFFFFF8E1));
+        return config?.warningColor ?? markdownTheme.warningCallout.background;
       case 'error':
-        return config?.errorColor ??
-            (isDark ? const Color(0xFF3D0000) : const Color(0xFFFFEBEE));
+        return config?.errorColor ?? markdownTheme.errorCallout.background;
       default:
         return config?.infoColor ??
-            (isDark ? const Color(0xFF00213D) : const Color(0xFFE3F2FD));
+            markdownTheme.calloutTone(_variant).background;
     }
   }
 
@@ -100,33 +101,68 @@ class _CalloutBlockWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final config = BlockEditorScope.maybeOf(context)?.calloutConfig;
-    final color = _resolveColor(context, config);
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
+    final tone = markdownTheme.calloutTone(_variant);
+    final color = _resolveColor(markdownTheme, config);
     final icon = _resolveIcon(config);
     final borderRadius =
-        config?.borderRadius ?? const BorderRadius.all(Radius.circular(6));
+        config?.borderRadius ??
+        BorderRadius.all(Radius.circular(editorTheme.radiusMd));
     final delta = node.delta ?? TextDelta.empty();
+    final title = (node.attributes['title'] as String?)?.trim();
+    final effectiveTitle = title == null || title.isEmpty
+        ? _defaultTitle(_variant)
+        : title;
 
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: color, borderRadius: borderRadius),
+      padding: const EdgeInsets.fromLTRB(12, 11, 13, 12),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: borderRadius,
+        border: Border.all(color: tone.border.withValues(alpha: 0.24)),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12, top: 2),
-            child: icon,
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: tone.iconBackground,
+              borderRadius: BorderRadius.circular(editorTheme.radiusSm),
+            ),
+            child: SizedBox.square(
+              dimension: 24,
+              child: IconTheme(
+                data: IconThemeData(size: 16, color: tone.accent),
+                child: Center(child: icon),
+              ),
+            ),
           ),
+          const SizedBox(width: 10),
           Expanded(
             child: MouseRegion(
               cursor: SystemMouseCursors.text,
               child: GestureDetector(
                 onTapDown: (details) =>
                     onEvent(TapEvent(blockId: node.id, offset: 0)),
-                child: RichTextRenderer(
-                  delta: delta,
-                  blockId: node.id,
-                  selection: selection,
-                  baseStyle: const TextStyle(fontSize: 15),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      effectiveTitle,
+                      style: markdownTheme.calloutTitleStyle,
+                    ),
+                    if (delta.plainText.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      RichTextRenderer(
+                        delta: delta,
+                        blockId: node.id,
+                        selection: selection,
+                        baseStyle: markdownTheme.calloutTextStyle,
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -134,5 +170,15 @@ class _CalloutBlockWidget extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _defaultTitle(String variant) {
+    final normalized = variant.trim();
+    if (normalized.isEmpty) return 'Info';
+    return normalized
+        .split(RegExp(r'[-_\s]+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
   }
 }

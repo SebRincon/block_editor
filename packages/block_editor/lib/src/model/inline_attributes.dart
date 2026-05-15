@@ -10,7 +10,11 @@ final class InlineAttributes {
     this.underline,
     this.strikethrough,
     this.inlineCode,
+    this.highlight,
     this.link,
+    this.wikiLink,
+    this.embed,
+    this.footnote,
     this.color,
     this.backgroundColor,
   });
@@ -22,7 +26,11 @@ final class InlineAttributes {
       underline: json['underline'] as bool?,
       strikethrough: json['strikethrough'] as bool?,
       inlineCode: json['inlineCode'] as bool?,
+      highlight: json['highlight'] as bool?,
       link: json['link'] as String?,
+      wikiLink: json['wikiLink'] as String?,
+      embed: json['embed'] as bool?,
+      footnote: json['footnote'] as String?,
       color: json['color'] as String?,
       backgroundColor: json['backgroundColor'] as String?,
     );
@@ -33,7 +41,11 @@ final class InlineAttributes {
   final bool? underline;
   final bool? strikethrough;
   final bool? inlineCode;
+  final bool? highlight;
   final String? link;
+  final String? wikiLink;
+  final bool? embed;
+  final String? footnote;
   final String? color;
   final String? backgroundColor;
 
@@ -43,7 +55,11 @@ final class InlineAttributes {
       underline == null &&
       strikethrough == null &&
       inlineCode == null &&
+      highlight == null &&
       link == null &&
+      wikiLink == null &&
+      embed == null &&
+      footnote == null &&
       color == null &&
       backgroundColor == null;
 
@@ -54,7 +70,11 @@ final class InlineAttributes {
       if (underline != null) 'underline': underline,
       if (strikethrough != null) 'strikethrough': strikethrough,
       if (inlineCode != null) 'inlineCode': inlineCode,
+      if (highlight != null) 'highlight': highlight,
       if (link != null) 'link': link,
+      if (wikiLink != null) 'wikiLink': wikiLink,
+      if (embed != null) 'embed': embed,
+      if (footnote != null) 'footnote': footnote,
       if (color != null) 'color': color,
       if (backgroundColor != null) 'backgroundColor': backgroundColor,
     };
@@ -66,7 +86,11 @@ final class InlineAttributes {
     bool? underline,
     bool? strikethrough,
     bool? inlineCode,
+    bool? highlight,
     String? link,
+    String? wikiLink,
+    bool? embed,
+    String? footnote,
     String? color,
     String? backgroundColor,
   }) {
@@ -76,7 +100,11 @@ final class InlineAttributes {
       underline: underline ?? this.underline,
       strikethrough: strikethrough ?? this.strikethrough,
       inlineCode: inlineCode ?? this.inlineCode,
+      highlight: highlight ?? this.highlight,
       link: link ?? this.link,
+      wikiLink: wikiLink ?? this.wikiLink,
+      embed: embed ?? this.embed,
+      footnote: footnote ?? this.footnote,
       color: color ?? this.color,
       backgroundColor: backgroundColor ?? this.backgroundColor,
     );
@@ -91,7 +119,11 @@ final class InlineAttributes {
         other.underline == underline &&
         other.strikethrough == strikethrough &&
         other.inlineCode == inlineCode &&
+        other.highlight == highlight &&
         other.link == link &&
+        other.wikiLink == wikiLink &&
+        other.embed == embed &&
+        other.footnote == footnote &&
         other.color == color &&
         other.backgroundColor == backgroundColor;
   }
@@ -103,7 +135,11 @@ final class InlineAttributes {
     underline,
     strikethrough,
     inlineCode,
+    highlight,
     link,
+    wikiLink,
+    embed,
+    footnote,
     color,
     backgroundColor,
   );

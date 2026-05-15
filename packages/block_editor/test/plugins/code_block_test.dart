@@ -1,9 +1,13 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:block_editor/block_editor.dart';
 
 Widget wrap(Widget child) {
-  return Directionality(textDirection: TextDirection.ltr, child: child);
+  return MaterialApp(
+    home: Scaffold(
+      body: Directionality(textDirection: TextDirection.ltr, child: child),
+    ),
+  );
 }
 
 BlockNode codeNode({String code = 'print("hello")', String language = 'dart'}) {
@@ -58,7 +62,7 @@ void main() {
           ),
         ),
       );
-      expect(find.text('var x = 1;'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'var x = 1;'), findsOneWidget);
     });
 
     testWidgets('renders Markdown-backed delta code content', (tester) async {
@@ -81,7 +85,61 @@ void main() {
           ),
         ),
       );
-      expect(find.text('void main() {}'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'void main() {}'), findsOneWidget);
+    });
+
+    testWidgets('emits CodeBlockChangedEvent when edited', (tester) async {
+      BlockEvent? received;
+      await tester.pumpWidget(
+        wrap(
+          BlockEditorScope(
+            child: Builder(
+              builder: (context) {
+                return CodeBlock().build(
+                  codeNode(code: 'var x = 1;'),
+                  EditorSelection.none,
+                  (event) => received = event,
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'var x = 1;'),
+        'var x = 2;',
+      );
+      await tester.pump();
+
+      expect(received, isA<CodeBlockChangedEvent>());
+      final event = received as CodeBlockChangedEvent;
+      expect(event.text, 'var x = 2;');
+    });
+
+    testWidgets('reports embedded text input focus changes', (tester) async {
+      final focusStates = <bool>[];
+      await tester.pumpWidget(
+        wrap(
+          BlockEditorScope(
+            onEmbeddedInputFocusChanged: focusStates.add,
+            child: Builder(
+              builder: (context) {
+                return CodeBlock().build(
+                  codeNode(code: 'var x = 1;'),
+                  EditorSelection.none,
+                  (_) {},
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.widgetWithText(TextField, 'var x = 1;'));
+      await tester.pump();
+
+      expect(focusStates, contains(true));
     });
 
     testWidgets('renders language label when showLanguageSelector is true', (

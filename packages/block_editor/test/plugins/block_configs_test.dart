@@ -101,6 +101,8 @@ void main() {
     test('default values are set correctly', () {
       const config = CodeBlockConfig();
       expect(config.theme, isNull);
+      expect(config.fontFamily, 'JetBrainsMono');
+      expect(config.fontFamilyFallback, ['MesloLGS NF', 'monospace']);
       expect(config.fontSize, 14.0);
       expect(config.showLineNumbers, isTrue);
       expect(config.showLanguageSelector, isTrue);
@@ -110,6 +112,16 @@ void main() {
     test('copyWith replaces fontSize', () {
       const config = CodeBlockConfig();
       expect(config.copyWith(fontSize: 16.0).fontSize, 16.0);
+    });
+
+    test('copyWith replaces font family', () {
+      const config = CodeBlockConfig();
+      final updated = config.copyWith(
+        fontFamily: 'RobotoMono',
+        fontFamilyFallback: ['monospace'],
+      );
+      expect(updated.fontFamily, 'RobotoMono');
+      expect(updated.fontFamilyFallback, ['monospace']);
     });
 
     test('copyWith replaces theme', () {

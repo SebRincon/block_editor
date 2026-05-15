@@ -65,6 +65,42 @@ void main() {
       expect(find.byType(H3Widget), findsOneWidget);
     });
 
+    testWidgets('heading4 renders H4Widget', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          BlockRenderer(
+            node: node(BlockTypes.heading4, text: 'Detail'),
+            onEvent: (_) {},
+          ),
+        ),
+      );
+      expect(find.byType(H4Widget), findsOneWidget);
+    });
+
+    testWidgets('heading5 renders H5Widget', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          BlockRenderer(
+            node: node(BlockTypes.heading5, text: 'Minor'),
+            onEvent: (_) {},
+          ),
+        ),
+      );
+      expect(find.byType(H5Widget), findsOneWidget);
+    });
+
+    testWidgets('heading6 renders H6Widget', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          BlockRenderer(
+            node: node(BlockTypes.heading6, text: 'Tiny'),
+            onEvent: (_) {},
+          ),
+        ),
+      );
+      expect(find.byType(H6Widget), findsOneWidget);
+    });
+
     testWidgets('bulletList renders BulletListWidget', (tester) async {
       await tester.pumpWidget(
         wrap(
@@ -123,6 +159,48 @@ void main() {
         wrap(BlockRenderer(node: node(BlockTypes.divider), onEvent: (_) {})),
       );
       expect(find.byType(DividerWidget), findsOneWidget);
+    });
+
+    testWidgets('rawMarkdown renders RawMarkdownWidget', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BlockRenderer(
+              node: node(BlockTypes.rawMarkdown, text: '<div>raw</div>'),
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+      expect(find.byType(RawMarkdownWidget), findsOneWidget);
+    });
+
+    testWidgets('math renders MathBlockWidget', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BlockRenderer(
+              node: node(BlockTypes.math, text: 'E = mc^2'),
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+      expect(find.byType(MathBlockWidget), findsOneWidget);
+    });
+
+    testWidgets('mermaid renders MermaidBlockWidget', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BlockRenderer(
+              node: node(BlockTypes.mermaid, text: 'graph TD\nA --> B'),
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+      expect(find.byType(MermaidBlockWidget), findsOneWidget);
     });
   });
 

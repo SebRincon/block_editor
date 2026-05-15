@@ -56,3 +56,4 @@ export 'src/rendering/formatting_toolbar.dart';
 export 'src/rendering/slash_command_menu.dart';
 export 'src/rendering/block_action_menu.dart';
 export 'src/theme/block_editor_theme.dart';
+export 'src/theme/markdown_document_theme.dart';

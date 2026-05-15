@@ -39,6 +39,7 @@ class EditorEditingOperations {
     final node = controller.document.findById(blockId);
     if (node == null) return;
     final delta = node.delta ?? TextDelta.empty();
+    if (character == ' ' && _tryApplyMarkdownShortcut(node, offset)) return;
     final baseAttrs = _attributesAtOffset(delta.ops, offset);
     final mergedAttrs = _mergePending(baseAttrs);
     final newOps = _insertIntoOps(delta.ops, offset, character, mergedAttrs);
@@ -126,7 +127,10 @@ class EditorEditingOperations {
     final isHeading =
         node.type == BlockTypes.heading1 ||
         node.type == BlockTypes.heading2 ||
-        node.type == BlockTypes.heading3;
+        node.type == BlockTypes.heading3 ||
+        node.type == BlockTypes.heading4 ||
+        node.type == BlockTypes.heading5 ||
+        node.type == BlockTypes.heading6;
     final newType = isHeading ? BlockTypes.paragraph : node.type;
     final length = delta.plainText.length;
     final before = delta.slice(0, offset);
@@ -146,23 +150,69 @@ class EditorEditingOperations {
   }
 
   /// Increments the indent level of the current list block by 1.
-  void indent() {
-    final sel = controller.selection;
-    if (sel is! CollapsedSelection) return;
-    final node = controller.document.findById(sel.point.blockId);
-    if (node == null || !_isListType(node.type)) return;
-    final current = node.attributes['indent'] as int? ?? 0;
-    controller.updateAttributes(node.id, {'indent': (current + 1).clamp(0, 8)});
-  }
+  void indent() => _changeIndent(1);
 
   /// Decrements the indent level of the current list block by 1.
-  void dedent() {
-    final sel = controller.selection;
-    if (sel is! CollapsedSelection) return;
-    final node = controller.document.findById(sel.point.blockId);
-    if (node == null || !_isListType(node.type)) return;
-    final current = node.attributes['indent'] as int? ?? 0;
-    controller.updateAttributes(node.id, {'indent': (current - 1).clamp(0, 8)});
+  void dedent() => _changeIndent(-1);
+
+  void _changeIndent(int direction) {
+    if (direction == 0) return;
+    final ids = controller.selectedBlockIds;
+    if (ids.isEmpty) return;
+    final updates = <String, Map<String, dynamic>>{};
+    for (final id in ids) {
+      final node = controller.document.findById(id);
+      if (node == null || !_isListType(node.type)) continue;
+      final current = node.attributes['indent'] as int? ?? 0;
+      final next = (current + direction).clamp(0, 8).toInt();
+      if (next == current) continue;
+      updates[node.id] = {'indent': next};
+    }
+    controller.updateAttributesForBlocks(updates);
+  }
+
+  bool _tryApplyMarkdownShortcut(BlockNode node, int offset) {
+    if (node.type != BlockTypes.paragraph) return false;
+    final text = node.delta?.plainText ?? '';
+    if (offset != text.length) return false;
+    final marker = text.substring(0, offset);
+    final replacement = _markdownShortcutReplacement(marker);
+    if (replacement == null) return false;
+
+    controller.update(
+      node.id,
+      BlockNode(
+        id: node.id,
+        type: replacement.type,
+        attributes: replacement.attributes,
+        delta: TextDelta.empty(),
+      ),
+    );
+    controller.collapseSelection(node.id, 0);
+    return true;
+  }
+
+  ({String type, Map<String, dynamic> attributes})?
+  _markdownShortcutReplacement(String marker) {
+    return switch (marker) {
+      '#' => (type: BlockTypes.heading1, attributes: const {}),
+      '##' => (type: BlockTypes.heading2, attributes: const {}),
+      '###' => (type: BlockTypes.heading3, attributes: const {}),
+      '####' => (type: BlockTypes.heading4, attributes: const {}),
+      '#####' => (type: BlockTypes.heading5, attributes: const {}),
+      '######' => (type: BlockTypes.heading6, attributes: const {}),
+      '-' || '*' || '+' => (type: BlockTypes.bulletList, attributes: const {}),
+      '1.' || '1)' => (type: BlockTypes.numberedList, attributes: const {}),
+      '>' => (type: BlockTypes.quote, attributes: const {}),
+      '[]' ||
+      '[ ]' => (type: BlockTypes.todo, attributes: const {'checked': false}),
+      '[x]' ||
+      '[X]' => (type: BlockTypes.todo, attributes: const {'checked': true}),
+      '```mermaid' => (type: BlockTypes.mermaid, attributes: const {}),
+      '```' => (type: BlockTypes.code, attributes: const {}),
+      r'$$' => (type: BlockTypes.math, attributes: const {}),
+      _ => null,
+    };
   }
 
   /// Applies bold to the selection or stores it as a pending attribute.
@@ -182,6 +232,10 @@ class EditorEditingOperations {
   /// Applies inline code to the selection or stores it as a pending attribute.
   void applyInlineCode() =>
       _applyOrPend(const InlineAttributes(inlineCode: true));
+
+  /// Applies Obsidian-style highlight to the selection or stores it pending.
+  void applyHighlight() =>
+      _applyOrPend(const InlineAttributes(highlight: true));
 
   /// Applies link to the selection or stores it as a pending attribute.
   void applyLink(String? link) =>

@@ -29,6 +29,30 @@ Widget _menuWidget({
   );
 }
 
+void mockClipboard(WidgetTester tester) {
+  String? clipboardText;
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.platform,
+    (call) async {
+      switch (call.method) {
+        case 'Clipboard.setData':
+          final data = call.arguments as Map<dynamic, dynamic>;
+          clipboardText = data['text'] as String?;
+          return null;
+        case 'Clipboard.getData':
+          return <String, dynamic>{'text': clipboardText};
+      }
+      return null;
+    },
+  );
+  addTearDown(() {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    );
+  });
+}
+
 void main() {
   group('BlockActionMenu — renders', () {
     testWidgets('shows all block action labels', (tester) async {
@@ -40,6 +64,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
 
       expect(find.text('Select block'), findsOneWidget);
+      expect(find.text('Copy Markdown'), findsOneWidget);
       expect(find.text('Delete block'), findsOneWidget);
       expect(find.text('Duplicate block'), findsOneWidget);
       expect(find.text('Turn into'), findsOneWidget);
@@ -70,6 +95,43 @@ void main() {
       expect(selection.anchor.offset, 0);
       expect(selection.focus.blockId, 'a');
       expect(selection.focus.offset, 5);
+      expect(dismissed, isTrue);
+    });
+  });
+
+  group('BlockActionMenu — copy markdown', () {
+    testWidgets('selects block and copies markdown to clipboard', (
+      tester,
+    ) async {
+      mockClipboard(tester);
+      var dismissed = false;
+      final ctrl = _ctrl([
+        BlockNode(
+          id: 'a',
+          type: BlockTypes.heading2,
+          delta: TextDelta.fromPlainText('Section'),
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        _menuWidget(
+          ctrl: ctrl,
+          blockId: 'a',
+          onDismiss: () => dismissed = true,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.tap(find.text('Copy Markdown'));
+      await tester.idle();
+
+      final selection = ctrl.selection as ExpandedSelection;
+      expect(selection.anchor.blockId, 'a');
+      expect(selection.anchor.offset, 0);
+      expect(selection.focus.blockId, 'a');
+      expect(selection.focus.offset, 7);
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      expect(data?.text, '## Section');
       expect(dismissed, isTrue);
     });
   });

@@ -12,6 +12,8 @@ final class CodeBlockConfig {
   /// Creates a [CodeBlockConfig].
   const CodeBlockConfig({
     this.theme,
+    this.fontFamily = 'JetBrainsMono',
+    this.fontFamilyFallback = const ['MesloLGS NF', 'monospace'],
     this.fontSize = 14.0,
     this.showLineNumbers = true,
     this.showLanguageSelector = true,
@@ -22,6 +24,12 @@ final class CodeBlockConfig {
   ///
   /// When null the block uses its default theme.
   final String? theme;
+
+  /// The preferred font family used for code text.
+  final String fontFamily;
+
+  /// Fallback font families used when [fontFamily] is unavailable.
+  final List<String> fontFamilyFallback;
 
   /// The font size used for code text.
   final double fontSize;
@@ -38,6 +46,8 @@ final class CodeBlockConfig {
   /// Returns a copy of this config with the given fields replaced.
   CodeBlockConfig copyWith({
     Object? theme = _sentinel,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
     double? fontSize,
     bool? showLineNumbers,
     bool? showLanguageSelector,
@@ -45,6 +55,8 @@ final class CodeBlockConfig {
   }) {
     return CodeBlockConfig(
       theme: theme == _sentinel ? this.theme : theme as String?,
+      fontFamily: fontFamily ?? this.fontFamily,
+      fontFamilyFallback: fontFamilyFallback ?? this.fontFamilyFallback,
       fontSize: fontSize ?? this.fontSize,
       showLineNumbers: showLineNumbers ?? this.showLineNumbers,
       showLanguageSelector: showLanguageSelector ?? this.showLanguageSelector,

@@ -158,6 +158,33 @@ final class BlockController {
     }).toList();
   }
 
+  List<BlockNode> _mergeAttributesInList(
+    List<BlockNode> nodes,
+    Map<String, Map<String, dynamic>> attributesById,
+    List<String> affectedIds,
+  ) {
+    return nodes.map((node) {
+      var updatedNode = node;
+      final attributes = attributesById[node.id];
+      if (attributes != null) {
+        updatedNode = updatedNode.copyWith(
+          attributes: {...updatedNode.attributes, ...attributes},
+        );
+        affectedIds.add(node.id);
+      }
+      if (updatedNode.children.isNotEmpty) {
+        updatedNode = updatedNode.copyWith(
+          children: _mergeAttributesInList(
+            updatedNode.children,
+            attributesById,
+            affectedIds,
+          ),
+        );
+      }
+      return updatedNode;
+    }).toList();
+  }
+
   List<BlockNode> _removeFromList(List<BlockNode> nodes, String id) {
     final result = <BlockNode>[];
     for (final node in nodes) {
@@ -243,6 +270,31 @@ final class BlockController {
     final node = _document.findById(id);
     if (node == null) return;
     update(id, node.copyWith(attributes: {...node.attributes, ...attributes}));
+  }
+
+  /// Merges attributes into several blocks as a single undoable mutation.
+  ///
+  /// Unknown block ids are ignored. Existing keys not present in each block's
+  /// attribute patch are preserved.
+  void updateAttributesForBlocks(
+    Map<String, Map<String, dynamic>> attributesById,
+  ) {
+    if (attributesById.isEmpty) return;
+    final affectedIds = <String>[];
+    final updated = _mergeAttributesInList(
+      _document.blocks,
+      attributesById,
+      affectedIds,
+    );
+    if (affectedIds.isEmpty) return;
+    _pushSnapshot();
+    _emit(
+      DocumentChange(
+        type: ChangeType.update,
+        document: _document.copyWith(blocks: updated),
+        affectedIds: affectedIds,
+      ),
+    );
   }
 
   /// Changes the type string of the block identified by [id] to [type].

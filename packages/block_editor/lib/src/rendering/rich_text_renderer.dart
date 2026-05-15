@@ -61,10 +61,11 @@ class RichTextRenderer extends StatelessWidget {
   Widget build(BuildContext context) {
     final variables = BlockEditorScope.maybeOf(context)?.variables ?? const {};
     final editorTheme = BlockEditorThemeData.fromContext(context);
+    final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
     final effectiveBase = resolveBlockEditorTextStyle(context, baseStyle);
     final textDirection = Directionality.of(context);
     final textScaler = MediaQuery.textScalerOf(context);
-    final spans = _buildSpans(variables, editorTheme);
+    final spans = _buildSpans(variables, editorTheme, markdownTheme);
     final textSpan = TextSpan(style: effectiveBase, children: spans);
     final textWidget = Text.rich(
       textSpan,
@@ -118,6 +119,7 @@ class RichTextRenderer extends StatelessWidget {
   List<TextSpan> _buildSpans(
     Map<String, String> variables,
     BlockEditorThemeData editorTheme,
+    MarkdownDocumentThemeData markdownTheme,
   ) {
     final spans = <TextSpan>[];
     var offset = 0;
@@ -174,7 +176,9 @@ class RichTextRenderer extends StatelessWidget {
       final opEnd = offset + length;
       if (composingRange != null &&
           _overlaps(opStart, opEnd, composingRange!)) {
-        spans.addAll(_buildSpansWithComposing(op, opStart, opEnd, editorTheme));
+        spans.addAll(
+          _buildSpansWithComposing(op, opStart, opEnd, markdownTheme),
+        );
       } else if (selRange != null &&
           _overlaps(
             opStart,
@@ -189,10 +193,11 @@ class RichTextRenderer extends StatelessWidget {
             selRange.$1,
             selRange.$2,
             editorTheme,
+            markdownTheme,
           ),
         );
       } else {
-        spans.add(_buildSpan(op, opStart, opEnd, editorTheme));
+        spans.add(_buildSpan(op, opStart, opEnd, markdownTheme));
       }
       offset = opEnd;
     }
@@ -233,6 +238,7 @@ class RichTextRenderer extends StatelessWidget {
     int selStart,
     int selEnd,
     BlockEditorThemeData editorTheme,
+    MarkdownDocumentThemeData markdownTheme,
   ) {
     final result = <TextSpan>[];
     final clipStart = selStart.clamp(opStart, opEnd);
@@ -246,7 +252,7 @@ class RichTextRenderer extends StatelessWidget {
           ),
           opStart,
           clipStart,
-          editorTheme,
+          markdownTheme,
         ),
       );
     }
@@ -255,7 +261,7 @@ class RichTextRenderer extends StatelessWidget {
         op.text.substring(clipStart - opStart, clipEnd - opStart),
         attributes: op.attributes,
       );
-      var style = _spanStyle(selected, editorTheme);
+      var style = _spanStyle(selected, markdownTheme);
       style = style.copyWith(
         backgroundColor: selectionColor ?? editorTheme.selection,
       );
@@ -270,24 +276,34 @@ class RichTextRenderer extends StatelessWidget {
           ),
           clipEnd,
           opEnd,
-          editorTheme,
+          markdownTheme,
         ),
       );
     }
     return result;
   }
 
-  TextStyle _spanStyle(TextOp op, BlockEditorThemeData editorTheme) {
+  TextStyle _spanStyle(TextOp op, MarkdownDocumentThemeData markdownTheme) {
     final attrs = op.attributes;
     final isCode = attrs.inlineCode ?? false;
     final isLink = attrs.link != null;
+    final isWikiLink = attrs.wikiLink != null;
+    final isFootnote = attrs.footnote != null;
     return TextStyle(
       fontWeight: (attrs.bold ?? false) ? FontWeight.bold : null,
       fontStyle: (attrs.italic ?? false) ? FontStyle.italic : null,
       decoration: _buildDecoration(attrs),
-      fontFamily: isCode ? 'monospace' : null,
-      backgroundColor: _resolveBackgroundColor(attrs, editorTheme),
-      color: _resolveColor(attrs, isLink, editorTheme),
+      fontFamily: isCode
+          ? markdownTheme.inlineCodeStyle.fontFamily ?? 'monospace'
+          : null,
+      backgroundColor: _resolveBackgroundColor(attrs, markdownTheme),
+      color: _resolveColor(
+        attrs,
+        isLink: isLink,
+        isWikiLink: isWikiLink,
+        isFootnote: isFootnote,
+        markdownTheme: markdownTheme,
+      ),
     );
   }
 
@@ -298,7 +314,7 @@ class RichTextRenderer extends StatelessWidget {
     TextOp op,
     int opStart,
     int opEnd,
-    BlockEditorThemeData editorTheme,
+    MarkdownDocumentThemeData markdownTheme,
   ) {
     final range = composingRange!;
     final compStart = range.start.clamp(opStart, opEnd);
@@ -313,7 +329,7 @@ class RichTextRenderer extends StatelessWidget {
           ),
           opStart,
           compStart,
-          editorTheme,
+          markdownTheme,
         ),
       );
     }
@@ -326,7 +342,7 @@ class RichTextRenderer extends StatelessWidget {
           ),
           compStart,
           compEnd,
-          editorTheme,
+          markdownTheme,
         ),
       );
     }
@@ -339,7 +355,7 @@ class RichTextRenderer extends StatelessWidget {
           ),
           compEnd,
           opEnd,
-          editorTheme,
+          markdownTheme,
         ),
       );
     }
@@ -350,11 +366,13 @@ class RichTextRenderer extends StatelessWidget {
     TextOp op,
     int start,
     int end,
-    BlockEditorThemeData editorTheme,
+    MarkdownDocumentThemeData markdownTheme,
   ) {
     final attrs = op.attributes;
     final isCode = attrs.inlineCode ?? false;
     final isLink = attrs.link != null;
+    final isWikiLink = attrs.wikiLink != null;
+    final isFootnote = attrs.footnote != null;
     final decorations = <TextDecoration>[TextDecoration.underline];
     if (attrs.underline ?? false) decorations.add(TextDecoration.underline);
     if (attrs.strikethrough ?? false) {
@@ -364,9 +382,17 @@ class RichTextRenderer extends StatelessWidget {
       fontWeight: (attrs.bold ?? false) ? FontWeight.bold : null,
       fontStyle: (attrs.italic ?? false) ? FontStyle.italic : null,
       decoration: TextDecoration.combine(decorations),
-      fontFamily: isCode ? 'monospace' : null,
-      backgroundColor: _resolveBackgroundColor(attrs, editorTheme),
-      color: _resolveColor(attrs, isLink, editorTheme),
+      fontFamily: isCode
+          ? markdownTheme.inlineCodeStyle.fontFamily ?? 'monospace'
+          : null,
+      backgroundColor: _resolveBackgroundColor(attrs, markdownTheme),
+      color: _resolveColor(
+        attrs,
+        isLink: isLink,
+        isWikiLink: isWikiLink,
+        isFootnote: isFootnote,
+        markdownTheme: markdownTheme,
+      ),
     );
     return TextSpan(text: op.text, style: style);
   }
@@ -375,18 +401,28 @@ class RichTextRenderer extends StatelessWidget {
     TextOp op,
     int start,
     int end,
-    BlockEditorThemeData editorTheme,
+    MarkdownDocumentThemeData markdownTheme,
   ) {
     final attrs = op.attributes;
     final isCode = attrs.inlineCode ?? false;
     final isLink = attrs.link != null;
+    final isWikiLink = attrs.wikiLink != null;
+    final isFootnote = attrs.footnote != null;
     final style = TextStyle(
       fontWeight: (attrs.bold ?? false) ? FontWeight.bold : null,
       fontStyle: (attrs.italic ?? false) ? FontStyle.italic : null,
       decoration: _buildDecoration(attrs),
-      fontFamily: isCode ? 'monospace' : null,
-      backgroundColor: _resolveBackgroundColor(attrs, editorTheme),
-      color: _resolveColor(attrs, isLink, editorTheme),
+      fontFamily: isCode
+          ? markdownTheme.inlineCodeStyle.fontFamily ?? 'monospace'
+          : null,
+      backgroundColor: _resolveBackgroundColor(attrs, markdownTheme),
+      color: _resolveColor(
+        attrs,
+        isLink: isLink,
+        isWikiLink: isWikiLink,
+        isFootnote: isFootnote,
+        markdownTheme: markdownTheme,
+      ),
     );
     return TextSpan(text: op.text, style: style);
   }
@@ -400,23 +436,35 @@ class RichTextRenderer extends StatelessWidget {
   }
 
   Color? _resolveColor(
-    InlineAttributes attrs,
-    bool isLink,
-    BlockEditorThemeData editorTheme,
-  ) {
+    InlineAttributes attrs, {
+    required bool isLink,
+    required bool isWikiLink,
+    required bool isFootnote,
+    required MarkdownDocumentThemeData markdownTheme,
+  }) {
     if (attrs.color != null) {
       return Color(int.parse(attrs.color!.replaceFirst('#', '0xFF')));
     }
-    if (isLink) return editorTheme.primary;
+    if (isLink) return markdownTheme.linkColor;
+    if (isWikiLink) return markdownTheme.wikiLinkColor;
+    if (isFootnote) return markdownTheme.footnoteColor;
+    if (attrs.inlineCode ?? false) return markdownTheme.inlineCodeForeground;
+    if (attrs.highlight == true) return markdownTheme.highlightForeground;
     return null;
   }
 
   Color? _resolveBackgroundColor(
     InlineAttributes attrs,
-    BlockEditorThemeData editorTheme,
+    MarkdownDocumentThemeData markdownTheme,
   ) {
     final isCode = attrs.inlineCode ?? false;
-    if (isCode) return inlineCodeColor ?? editorTheme.inlineCodeBackground;
+    if (isCode) return inlineCodeColor ?? markdownTheme.inlineCodeBackground;
+    if (attrs.highlight == true) return markdownTheme.highlightBackground;
+    if (attrs.wikiLink != null && attrs.embed == true) {
+      return markdownTheme.embedBackground;
+    }
+    if (attrs.wikiLink != null) return markdownTheme.wikiLinkBackground;
+    if (attrs.footnote != null) return markdownTheme.footnoteBackground;
     if (attrs.backgroundColor != null) {
       return Color(int.parse(attrs.backgroundColor!.replaceFirst('#', '0xFF')));
     }

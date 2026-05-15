@@ -741,6 +741,16 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
         _deleteTableRow(event);
       case TableColumnDeletedEvent():
         _deleteTableColumn(event);
+      case TableColumnAlignmentChangedEvent():
+        _alignTableColumn(event);
+      case CodeBlockChangedEvent():
+        _updateCodeBlock(event);
+      case MathBlockChangedEvent():
+        _updateMathBlock(event);
+      case MermaidBlockChangedEvent():
+        _updateMermaidBlock(event);
+      case RawMarkdownChangedEvent():
+        _updateRawMarkdownBlock(event);
       case BlockReorderedEvent():
         widget.controller.move(event.blockId, event.newIndex);
       case CustomBlockEvent():
@@ -873,6 +883,62 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     widget.controller.updateAttributes(event.blockId, updatedAttributes);
   }
 
+  void _alignTableColumn(TableColumnAlignmentChangedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.table) return;
+
+    final headers = _tableHeaders(node);
+    if (event.columnIndex < 0 || event.columnIndex >= headers.length) return;
+    final alignments = _tableAlignments(node);
+    while (alignments.length < headers.length) {
+      alignments.add('');
+    }
+    final alignment = event.alignment;
+    alignments[event.columnIndex] = alignment == null || alignment.isEmpty
+        ? ''
+        : alignment;
+
+    widget.controller.updateAttributes(event.blockId, {
+      'alignments': alignments,
+    });
+  }
+
+  void _updateCodeBlock(CodeBlockChangedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.code) return;
+    widget.controller.updateDelta(
+      event.blockId,
+      TextDelta.fromPlainText(event.text),
+    );
+  }
+
+  void _updateMathBlock(MathBlockChangedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.math) return;
+    widget.controller.updateDelta(
+      event.blockId,
+      TextDelta.fromPlainText(event.text),
+    );
+  }
+
+  void _updateMermaidBlock(MermaidBlockChangedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.mermaid) return;
+    widget.controller.updateDelta(
+      event.blockId,
+      TextDelta.fromPlainText(event.text),
+    );
+  }
+
+  void _updateRawMarkdownBlock(RawMarkdownChangedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.rawMarkdown) return;
+    widget.controller.updateDelta(
+      event.blockId,
+      TextDelta.fromPlainText(event.text),
+    );
+  }
+
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (widget.readOnly) return KeyEventResult.ignored;
     if (_embeddedInputFocusDepth > 0) return KeyEventResult.ignored;
@@ -909,13 +975,13 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   }
 
   Future<void> _copySelectionToClipboard() async {
-    final selectedText = _selectedPlainText();
+    final selectedText = _selectedClipboardText();
     if (selectedText == null) return;
     await Clipboard.setData(ClipboardData(text: selectedText));
   }
 
   void _cutSelectionToClipboard() {
-    final selectedText = _selectedPlainText();
+    final selectedText = _selectedClipboardText();
     if (selectedText == null) return;
     unawaited(Clipboard.setData(ClipboardData(text: selectedText)));
     _ops.delete();
@@ -945,6 +1011,42 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
         _ops.insertCharacter(character);
       }
     }
+  }
+
+  String? _selectedClipboardText() {
+    return _selectedWholeBlockMarkdown() ?? _selectedPlainText();
+  }
+
+  String? _selectedWholeBlockMarkdown() {
+    final selectedBlocks = _selectedWholeBlocks();
+    if (selectedBlocks == null || selectedBlocks.isEmpty) return null;
+    return BlockMarkdownCodec.encode(BlockDocument(selectedBlocks));
+  }
+
+  List<BlockNode>? _selectedWholeBlocks() {
+    final sel = widget.controller.selection;
+    if (sel is! ExpandedSelection) return null;
+
+    final blocks = widget.controller.document.flatten();
+    final ids = blocks.map((block) => block.id).toList();
+    final resolved = sel.resolveOrder(ids);
+    final startIndex = ids.indexOf(resolved.start.blockId);
+    final endIndex = ids.indexOf(resolved.end.blockId);
+    if (startIndex < 0 || endIndex < 0) return null;
+
+    final startBlock = blocks[startIndex];
+    final endBlock = blocks[endIndex];
+    final startLength = startBlock.delta?.plainText.length ?? 0;
+    final endLength = endBlock.delta?.plainText.length ?? 0;
+    final startsAtBlockStart = resolved.start.offset <= 0;
+    final endsAtBlockEnd = resolved.end.offset >= endLength;
+    final emptySingleBlock =
+        startIndex == endIndex && startLength == 0 && resolved.end.offset == 0;
+    if ((!startsAtBlockStart || !endsAtBlockEnd) && !emptySingleBlock) {
+      return null;
+    }
+
+    return blocks.sublist(startIndex, endIndex + 1);
   }
 
   String? _selectedPlainText() {
@@ -1038,7 +1140,12 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       renderer.context,
       renderer.widget.baseStyle,
     );
-    final span = buildMeasurementSpan(delta, effectiveBase, variables);
+    final span = buildMeasurementSpan(
+      delta,
+      effectiveBase,
+      variables,
+      MarkdownDocumentThemeData.fromContext(renderer.context),
+    );
     final textDirection = Directionality.of(renderer.context);
     final textScaler = MediaQuery.textScalerOf(renderer.context);
     final painter = TextPainter(
@@ -1204,7 +1311,12 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       entry.context,
       entry.widget.baseStyle,
     );
-    final span = buildMeasurementSpan(delta, effectiveBase, variables);
+    final span = buildMeasurementSpan(
+      delta,
+      effectiveBase,
+      variables,
+      MarkdownDocumentThemeData.fromContext(entry.context),
+    );
     final painter = TextPainter(
       text: span,
       textAlign: entry.widget.textAlign,
@@ -1270,8 +1382,12 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   }
 
   int _resolveNumber(List<BlockNode> blocks, int index) {
+    final currentIndent = _listIndentLevel(blocks[index]);
     var count = 1;
     for (var i = index - 1; i >= 0; i--) {
+      final previousIndent = _listIndentLevel(blocks[i]);
+      if (previousIndent > currentIndent) continue;
+      if (previousIndent < currentIndent) break;
       if (blocks[i].type == BlockTypes.numberedList) {
         count++;
       } else {
@@ -1280,6 +1396,9 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     }
     return count;
   }
+
+  int _listIndentLevel(BlockNode block) =>
+      (block.attributes['indent'] as int? ?? 0).clamp(0, 8).toInt();
 
   EdgeInsets _spacingForBlock(List<BlockNode> blocks, int index) {
     final type = blocks[index].type;
@@ -1298,9 +1417,15 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       BlockTypes.heading1 => EdgeInsets.only(top: first ? 0 : 26, bottom: 10),
       BlockTypes.heading2 => EdgeInsets.only(top: first ? 0 : 22, bottom: 8),
       BlockTypes.heading3 => EdgeInsets.only(top: first ? 0 : 18, bottom: 6),
+      BlockTypes.heading4 => EdgeInsets.only(top: first ? 0 : 16, bottom: 6),
+      BlockTypes.heading5 => EdgeInsets.only(top: first ? 0 : 14, bottom: 5),
+      BlockTypes.heading6 => EdgeInsets.only(top: first ? 0 : 12, bottom: 5),
       BlockTypes.paragraph => const EdgeInsets.only(top: 2, bottom: 10),
       BlockTypes.quote => const EdgeInsets.only(top: 8, bottom: 12),
       BlockTypes.code => const EdgeInsets.only(top: 10, bottom: 14),
+      BlockTypes.math => const EdgeInsets.only(top: 10, bottom: 14),
+      BlockTypes.mermaid => const EdgeInsets.only(top: 10, bottom: 14),
+      BlockTypes.rawMarkdown => const EdgeInsets.only(top: 10, bottom: 14),
       BlockTypes.table => const EdgeInsets.only(top: 10, bottom: 14),
       BlockTypes.divider => const EdgeInsets.symmetric(vertical: 14),
       _ => const EdgeInsets.only(top: 4, bottom: 10),

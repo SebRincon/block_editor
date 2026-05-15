@@ -68,6 +68,9 @@ final class TextDelta {
     final allInlineCode =
         attributes.inlineCode != null &&
         _allHave(start, end, (a) => a.inlineCode == true);
+    final allHighlight =
+        attributes.highlight != null &&
+        _allHave(start, end, (a) => a.highlight == true);
 
     final result = <DeltaOp>[];
     var cursor = 0;
@@ -119,7 +122,13 @@ final class TextDelta {
               inlineCode: attributes.inlineCode != null
                   ? (allInlineCode ? null : true)
                   : a.inlineCode,
+              highlight: attributes.highlight != null
+                  ? (allHighlight ? null : true)
+                  : a.highlight,
               link: attributes.link ?? a.link,
+              wikiLink: attributes.wikiLink ?? a.wikiLink,
+              embed: attributes.embed ?? a.embed,
+              footnote: attributes.footnote ?? a.footnote,
               color: attributes.color ?? a.color,
               backgroundColor: attributes.backgroundColor ?? a.backgroundColor,
             ),

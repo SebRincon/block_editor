@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../sections/custom_block_demo_section.dart';
 import '../sections/demo_blocks_section.dart';
 import '../sections/editor_section.dart';
+import '../sections/rendering_playground_section.dart';
 import '../theme/app_theme.dart';
 import 'nav_bottom_bar.dart';
 import 'nav_sidebar.dart';
@@ -52,6 +53,11 @@ class _ShellScaffoldState extends State<ShellScaffold> {
       ),
       2 => CustomBlockDemoSection(
         key: const ValueKey('custom'),
+        themeMode: widget.themeMode,
+        onToggleTheme: widget.onToggleTheme,
+      ),
+      3 => RenderingPlaygroundSection(
+        key: const ValueKey('playground'),
         themeMode: widget.themeMode,
         onToggleTheme: widget.onToggleTheme,
       ),

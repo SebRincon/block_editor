@@ -12,6 +12,8 @@ dependencies:
     sdk: flutter
   block_editor:
     path: ../packages/block_editor
+  shadcn_flutter:
+    path: ../../../../shadcn_flutter
   cupertino_icons: ^1.0.8
 
 dev_dependencies:

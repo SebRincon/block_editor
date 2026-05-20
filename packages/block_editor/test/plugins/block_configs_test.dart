@@ -101,9 +101,15 @@ void main() {
     test('default values are set correctly', () {
       const config = CodeBlockConfig();
       expect(config.theme, isNull);
-      expect(config.fontFamily, 'JetBrainsMono');
-      expect(config.fontFamilyFallback, ['MesloLGS NF', 'monospace']);
-      expect(config.fontSize, 14.0);
+      expect(config.fontFamily, 'Cascadia Mono');
+      expect(config.fontFamilyFallback, [
+        'JetBrains Mono',
+        'Fira Code',
+        'MesloLGS NF',
+        'Monaco',
+        'monospace',
+      ]);
+      expect(config.fontSize, 13.0);
       expect(config.showLineNumbers, isTrue);
       expect(config.showLanguageSelector, isTrue);
       expect(config.tabSize, 2);
@@ -225,6 +231,7 @@ void main() {
       expect(scope!.codeConfig, isNull);
       expect(scope!.calloutConfig, isNull);
       expect(scope!.linkConfig, isNull);
+      expect(scope!.sourceEditingConfig, isNull);
     });
 
     testWidgets('imageConfig is accessible from context', (tester) async {
@@ -265,6 +272,33 @@ void main() {
         ),
       );
       expect(scope!.codeConfig!.tabSize, 4);
+    });
+
+    testWidgets('sourceEditingConfig is accessible from context', (
+      tester,
+    ) async {
+      late BlockEditorScope? scope;
+      const config = BlockSourceEditingConfig(
+        textStyle: TextStyle(fontFamily: 'Cascadia Mono'),
+      );
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: BlockEditorScope(
+            sourceEditingConfig: config,
+            child: Builder(
+              builder: (context) {
+                scope = BlockEditorScope.maybeOf(context);
+                return const SizedBox();
+              },
+            ),
+          ),
+        ),
+      );
+      expect(
+        scope!.sourceEditingConfig!.textStyle!.fontFamily,
+        'Cascadia Mono',
+      );
     });
   });
 }

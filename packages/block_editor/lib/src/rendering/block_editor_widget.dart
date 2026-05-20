@@ -80,6 +80,7 @@ class BlockEditorWidget extends StatefulWidget {
     this.toolbarBreakpoint = 768.0,
     this.showFormattingToolbar = true,
     this.onColorPickerRequested,
+    this.sourceEditingConfig,
   });
 
   /// The controller that owns the document and selection state.
@@ -129,6 +130,10 @@ class BlockEditorWidget extends StatefulWidget {
   /// non-null this callback is awaited and its returned [Color] is applied
   /// if non-null. See the class-level documentation for full usage details.
   final Future<Color?> Function(Color? currentColor)? onColorPickerRequested;
+
+  /// Optional shared styling/highlighting for embedded source editors such as
+  /// code fences, Mermaid source, math source, and raw Markdown blocks.
+  final BlockSourceEditingConfig? sourceEditingConfig;
 
   @override
   State<BlockEditorWidget> createState() => _BlockEditorWidgetState();
@@ -751,6 +756,10 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
         _updateMermaidBlock(event);
       case RawMarkdownChangedEvent():
         _updateRawMarkdownBlock(event);
+      case CalloutTitleChangedEvent():
+        _updateCalloutTitle(event);
+      case CalloutVariantChangedEvent():
+        _updateCalloutVariant(event);
       case BlockReorderedEvent():
         widget.controller.move(event.blockId, event.newIndex);
       case CustomBlockEvent():
@@ -937,6 +946,20 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       event.blockId,
       TextDelta.fromPlainText(event.text),
     );
+  }
+
+  void _updateCalloutTitle(CalloutTitleChangedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.callout) return;
+    widget.controller.updateAttributes(event.blockId, {'title': event.title});
+  }
+
+  void _updateCalloutVariant(CalloutVariantChangedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.callout) return;
+    widget.controller.updateAttributes(event.blockId, {
+      'variant': event.variant,
+    });
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
@@ -1547,6 +1570,9 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       return BlockEditorScope(
         variables: widget.variables,
         readOnly: true,
+        cursorColor: cursorColor,
+        selectionColor: selectionColor,
+        sourceEditingConfig: widget.sourceEditingConfig,
         child: selectionSurface,
       );
     }
@@ -1603,7 +1629,10 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     return BlockEditorScope(
       variables: widget.variables,
       readOnly: false,
+      cursorColor: cursorColor,
+      selectionColor: selectionColor,
       onEmbeddedInputFocusChanged: _handleEmbeddedInputFocusChanged,
+      sourceEditingConfig: widget.sourceEditingConfig,
       child: editorChild,
     );
   }

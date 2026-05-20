@@ -55,7 +55,7 @@ class BlockSelectionOverlay extends StatelessWidget {
     super.key,
     required this.child,
     required this.isCovered,
-    this.highlightColor = const Color(0x443399FF),
+    this.highlightColor = const Color(0x663B82F6),
   });
 
   /// The block widget to wrap.

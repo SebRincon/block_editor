@@ -12,9 +12,15 @@ final class CodeBlockConfig {
   /// Creates a [CodeBlockConfig].
   const CodeBlockConfig({
     this.theme,
-    this.fontFamily = 'JetBrainsMono',
-    this.fontFamilyFallback = const ['MesloLGS NF', 'monospace'],
-    this.fontSize = 14.0,
+    this.fontFamily = 'Cascadia Mono',
+    this.fontFamilyFallback = const [
+      'JetBrains Mono',
+      'Fira Code',
+      'MesloLGS NF',
+      'Monaco',
+      'monospace',
+    ],
+    this.fontSize = 13.0,
     this.showLineNumbers = true,
     this.showLanguageSelector = true,
     this.tabSize = 2,

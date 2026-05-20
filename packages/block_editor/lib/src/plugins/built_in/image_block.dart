@@ -55,8 +55,9 @@ class _ImageBlockWidget extends StatelessWidget {
   final BlockNode node;
   final void Function(BlockEvent) onEvent;
 
-  static const Color _defaultBackground = Color(0xFFF5F5F5);
-  static const double _defaultHeight = 200.0;
+  static const double _fallbackHeight = 96.0;
+  static const double _maxImageWidth = 760.0;
+  static const double _maxImageHeight = 520.0;
 
   @override
   Widget build(BuildContext context) {
@@ -84,22 +85,31 @@ class _ImageBlockWidget extends StatelessWidget {
     switch (source) {
       case 'network':
         final url = node.attributes['url'] as String? ?? '';
-        if (url.isEmpty) return _placeholder();
-        return Image.network(
-          url,
-          fit: fit,
-          height: _defaultHeight,
-          errorBuilder: (ctx, error, _) =>
-              config?.onError?.call(ctx, error) ?? _errorWidget(),
-          loadingBuilder: (ctx, child, progress) {
-            if (progress == null) return child;
-            return config?.onLoading?.call(ctx) ?? _loadingWidget();
-          },
+        if (url.isEmpty) return _placeholder(context);
+        return Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: _maxImageWidth,
+              maxHeight: _maxImageHeight,
+            ),
+            child: Image.network(
+              url,
+              fit: fit,
+              errorBuilder: (ctx, error, _) =>
+                  config?.onError?.call(ctx, error) ??
+                  _errorWidget(ctx, url: url),
+              loadingBuilder: (ctx, child, progress) {
+                if (progress == null) return child;
+                return config?.onLoading?.call(ctx) ?? _loadingWidget(ctx);
+              },
+            ),
+          ),
         );
 
       case 'local':
         final path = node.attributes['path'] as String? ?? '';
-        if (path.isEmpty) return _placeholder();
+        if (path.isEmpty) return _placeholder(context);
         onEvent(
           CustomBlockEvent(
             blockId: node.id,
@@ -107,37 +117,112 @@ class _ImageBlockWidget extends StatelessWidget {
             payload: path,
           ),
         );
-        return config?.onLoading?.call(context) ?? _loadingWidget();
+        return config?.onLoading?.call(context) ?? _loadingWidget(context);
 
       case 'upload_pending':
-        return config?.onLoading?.call(context) ?? _loadingWidget();
+        return config?.onLoading?.call(context) ?? _loadingWidget(context);
 
       default:
-        return _placeholder();
+        return _placeholder(context);
     }
   }
 
-  Widget _placeholder() {
-    return Container(
-      height: _defaultHeight,
-      color: _defaultBackground,
-      child: const Center(child: Text('No image')),
+  Widget _placeholder(BuildContext context) {
+    return _statusCard(
+      context,
+      icon: Icons.image_not_supported_outlined,
+      title: 'No image',
     );
   }
 
-  Widget _loadingWidget() {
-    return Container(
-      height: _defaultHeight,
-      color: _defaultBackground,
-      child: const Center(child: Text('Loading…')),
+  Widget _loadingWidget(BuildContext context) {
+    return _statusCard(
+      context,
+      icon: Icons.downloading_rounded,
+      title: 'Loading…',
     );
   }
 
-  Widget _errorWidget() {
-    return Container(
-      height: _defaultHeight,
-      color: _defaultBackground,
-      child: const Center(child: Text('Failed to load image')),
+  Widget _errorWidget(BuildContext context, {required String url}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: url.isEmpty
+          ? null
+          : () => onEvent(
+              CustomBlockEvent(
+                blockId: node.id,
+                eventType: 'image_open_requested',
+                payload: url,
+              ),
+            ),
+      child: _statusCard(
+        context,
+        icon: Icons.broken_image_outlined,
+        title: 'Failed to load image',
+        subtitle: url,
+        clickable: url.isNotEmpty,
+      ),
+    );
+  }
+
+  Widget _statusCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    bool clickable = false,
+  }) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: markdownTheme.codeBlockBackground,
+            border: Border.all(color: markdownTheme.codeBlockBorder),
+            borderRadius: BorderRadius.circular(editorTheme.radiusMd),
+          ),
+          child: SizedBox(
+            height: _fallbackHeight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  Icon(icon, size: 20, color: editorTheme.mutedForeground),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title, style: editorTheme.smallStyle),
+                        if (subtitle != null && subtitle.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: editorTheme.xSmallStyle.copyWith(
+                              color: clickable
+                                  ? markdownTheme.linkColor
+                                  : editorTheme.mutedForeground,
+                              decoration: clickable
+                                  ? TextDecoration.underline
+                                  : TextDecoration.none,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

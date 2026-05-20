@@ -4,7 +4,7 @@ import '../theme/app_theme.dart';
 
 /// The fixed left navigation sidebar shown on wide screens.
 ///
-/// Renders three navigation items stacked vertically. The active item is
+/// Renders navigation items stacked vertically. The active item is
 /// highlighted with the accent color. Inactive items respond to hover with
 /// a subtle background shift. The sidebar is always 220 logical pixels wide.
 class NavSidebar extends StatelessWidget {
@@ -81,6 +81,13 @@ class NavSidebar extends StatelessWidget {
                   label: 'Custom Block',
                   selected: selectedIndex == 2,
                   onTap: () => onDestinationSelected(2),
+                ),
+                const SizedBox(height: 2),
+                _NavItem(
+                  icon: Icons.tune_rounded,
+                  label: 'Playground',
+                  selected: selectedIndex == 3,
+                  onTap: () => onDestinationSelected(3),
                 ),
               ],
             ),

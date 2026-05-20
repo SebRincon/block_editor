@@ -3,6 +3,9 @@ library;
 import 'package:flutter/material.dart' as material;
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 
+const _selectionBlue = material.Color(0x663B82F6);
+const _cursorBlue = material.Color(0xFF3B82F6);
+
 /// Shared theme tokens used by block_editor surfaces.
 ///
 /// The editor prefers the nearest shadcn_flutter [shadcn.Theme]. A Material
@@ -92,8 +95,8 @@ final class BlockEditorThemeData {
         accentForeground: colors.accentForeground,
         destructive: colors.destructive,
         ring: colors.ring,
-        selection: colors.primary.withValues(alpha: 0.22),
-        cursor: colors.primary,
+        selection: _selectionBlue,
+        cursor: _cursorBlue,
         inlineCodeBackground: colors.muted,
         variable: colors.primary,
         tag: colors.ring,
@@ -147,8 +150,8 @@ final class BlockEditorThemeData {
       accentForeground: colors.onSecondaryContainer,
       destructive: colors.error,
       ring: primary,
-      selection: primary.withValues(alpha: 0.22),
-      cursor: primary,
+      selection: _selectionBlue,
+      cursor: _cursorBlue,
       inlineCodeBackground: muted,
       variable: primary,
       tag: colors.tertiary,
@@ -210,8 +213,8 @@ final class BlockEditorThemeData {
       accentForeground: foreground,
       destructive: material.Color(0xFFD32F2F),
       ring: primary,
-      selection: material.Color(0x443399FF),
-      cursor: material.Color(0xFF000000),
+      selection: _selectionBlue,
+      cursor: _cursorBlue,
       inlineCodeBackground: inlineCodeBackground,
       variable: material.Color(0xFF8B5CF6),
       tag: material.Color(0xFF0EA5E9),

@@ -1,6 +1,7 @@
 import 'package:block_editor/block_editor.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Widget wrap(Widget child) {
@@ -13,13 +14,13 @@ Widget wrap(Widget child) {
 
 Future<void> activateTableCell(WidgetTester tester, String text) async {
   await hoverTableCell(tester, text);
-  await tester.tap(find.widgetWithText(TextField, text));
+  await tester.tap(_tableCellFinder(text));
   await tester.pump();
   await tester.pump();
 }
 
 Future<void> hoverTableCell(WidgetTester tester, String text) async {
-  final finder = find.widgetWithText(TextField, text);
+  final finder = _tableCellFinder(text);
   await tester.sendEventToBinding(
     PointerHoverEvent(
       position: tester.getCenter(finder),
@@ -38,6 +39,54 @@ Future<void> hoverOutsideEditor(WidgetTester tester) async {
     ),
   );
   await tester.pump();
+}
+
+Finder _tableCellFinder(String text) {
+  final field = find.widgetWithText(TextField, text);
+  if (field.evaluate().isNotEmpty) return field;
+
+  final renderable = text.replaceAll(
+    RegExp(r'<br\s*/?>', caseSensitive: false),
+    '\n',
+  );
+  final plain = BlockMarkdownCodec.parseInline(renderable).plainText;
+  final richText = find.byWidgetPredicate(
+    (widget) => widget is RichText && widget.text.toPlainText() == plain,
+  );
+  if (richText.evaluate().isNotEmpty) return richText;
+
+  return find.text(plain, findRichText: true);
+}
+
+Finder _tableCellSurfaceFinder(String tableId) {
+  return find.byWidgetPredicate((widget) {
+    final key = widget.key;
+    return key is ValueKey<String> &&
+        key.value.startsWith('block-editor-table-cell-$tableId-');
+  });
+}
+
+Finder _tableResizeHandleFinder(MouseCursor cursor) {
+  return find.byWidgetPredicate(
+    (widget) => widget is MouseRegion && widget.cursor == cursor,
+  );
+}
+
+Iterable<TextSpan> flattenTextSpan(TextSpan span) sync* {
+  yield span;
+  for (final child in span.children ?? const <InlineSpan>[]) {
+    if (child is TextSpan) yield* flattenTextSpan(child);
+  }
+}
+
+TextSpan richTextSpanWithPlainText(WidgetTester tester, String plainText) {
+  for (final widget in tester.widgetList<RichText>(find.byType(RichText))) {
+    final span = widget.text;
+    if (span is TextSpan && span.toPlainText() == plainText) {
+      return span;
+    }
+  }
+  throw TestFailure('No RichText span found for "$plainText".');
 }
 
 void main() {
@@ -157,7 +206,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('renders bullet marker', (tester) async {
+    testWidgets('renders a drawn bullet marker', (tester) async {
       await tester.pumpWidget(
         wrap(
           BulletListWidget(
@@ -168,7 +217,42 @@ void main() {
           ),
         ),
       );
-      expect(find.text('•'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('block-editor-bullet-marker-filledCircle')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('nested bullets use inverted drawn markers', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          Column(
+            children: [
+              BulletListWidget(
+                blockId: 'b1',
+                delta: helloDelta,
+                attributes: const {'indent': 1},
+                onEvent: (_) {},
+              ),
+              BulletListWidget(
+                blockId: 'b2',
+                delta: helloDelta,
+                attributes: const {'indent': 2},
+                onEvent: (_) {},
+              ),
+            ],
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey('block-editor-bullet-marker-invertedCircle')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('block-editor-bullet-marker-invertedSquare')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('applies indent padding', (tester) async {
@@ -236,6 +320,51 @@ void main() {
         ),
       );
       expect(find.text('3.'), findsOneWidget);
+    });
+
+    testWidgets('uses Markdown theme list metrics and marker offset', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          Builder(
+            builder: (context) {
+              final theme = MarkdownDocumentThemeData.defaults(context);
+              return MarkdownDocumentTheme(
+                data: theme.copyWith(
+                  listIndentWidth: 36,
+                  listMarkerWidth: 40,
+                  numberedListMarkerVerticalOffset: -4,
+                ),
+                child: NumberedListWidget(
+                  blockId: 'b1',
+                  delta: helloDelta,
+                  attributes: const {'indent': 2},
+                  number: 7,
+                  onEvent: (_) {},
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      final padding = tester.widget<Padding>(find.byType(Padding).first);
+      expect(padding.padding, const EdgeInsetsDirectional.only(start: 72.0));
+
+      final markerBox = tester.widget<SizedBox>(
+        find
+            .ancestor(of: find.text('7.'), matching: find.byType(SizedBox))
+            .first,
+      );
+      expect(markerBox.width, 44);
+
+      final markerTransform = tester.widget<Transform>(
+        find
+            .ancestor(of: find.text('7.'), matching: find.byType(Transform))
+            .first,
+      );
+      expect(markerTransform.transform.storage[13], -4);
     });
 
     testWidgets('emits TapEvent on tap', (tester) async {
@@ -421,6 +550,289 @@ void main() {
     });
   });
 
+  group('MermaidBlockWidget', () {
+    Finder mermaidPainter() {
+      return find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.painter.runtimeType.toString().contains(
+              'MermaidDiagramPainter',
+            ),
+      );
+    }
+
+    testWidgets('renders flowcharts as a painted diagram preview', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 640,
+            child: MermaidBlockWidget(
+              blockId: 'diagram1',
+              delta: TextDelta.fromPlainText(
+                'graph TD\n'
+                'Editor[Editable editor] --> Blocks[Block document]\n'
+                'Blocks --> Markdown[Markdown export]',
+              ),
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(mermaidPainter(), findsOneWidget);
+    });
+
+    testWidgets('renders sequence diagrams as a painted diagram preview', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 640,
+            child: MermaidBlockWidget(
+              blockId: 'diagram1',
+              delta: TextDelta.fromPlainText(
+                'sequenceDiagram\n'
+                'participant User\n'
+                'participant Editor\n'
+                'User->>Editor: edit blocks',
+              ),
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(mermaidPainter(), findsOneWidget);
+    });
+
+    testWidgets('renders focused split editor preview on wide layouts', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 900,
+            child: MermaidBlockWidget(
+              blockId: 'diagram1',
+              delta: TextDelta.fromPlainText(
+                'graph TD\n'
+                'Editor[Editable editor] --> Blocks[Block document]\n'
+                'Blocks --> Markdown[Markdown export]',
+              ),
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      await tester.tapAt(tester.getCenter(find.byType(MermaidBlockWidget)));
+      await tester.pump();
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(mermaidPainter(), findsOneWidget);
+    });
+
+    testWidgets('keeps split editor and preview panels at the same height', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 900,
+            child: MermaidBlockWidget(
+              blockId: 'diagram1',
+              delta: TextDelta.fromPlainText(
+                'graph TD\n'
+                'A[Plan] --> B[Build]\n'
+                'B --> C[Test]\n'
+                'C --> D[Ship]',
+              ),
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      await tester.tapAt(tester.getCenter(find.byType(MermaidBlockWidget)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 220));
+
+      final editorSize = tester.getSize(
+        find.byKey(const ValueKey('block-editor-source-editor-diagram1')),
+      );
+      final previewSize = tester.getSize(
+        find.byKey(const ValueKey('block-editor-source-preview-diagram1')),
+      );
+
+      expect(editorSize.height, previewSize.height);
+      expect(previewSize.height, greaterThan(260));
+    });
+
+    testWidgets('highlights Mermaid source tokens while editing', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 900,
+            child: MermaidBlockWidget(
+              blockId: 'diagram1',
+              delta: TextDelta.fromPlainText(
+                'graph TD\nA[Start] --> B{Choice}',
+              ),
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      await tester.tapAt(tester.getCenter(find.byType(MermaidBlockWidget)));
+      await tester.pump();
+      await tester.pump();
+
+      final field = tester.widget<TextField>(find.byType(TextField));
+      final span = field.controller!.buildTextSpan(
+        context: tester.element(find.byType(TextField)),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+
+      final spans = flattenTextSpan(span).toList();
+      expect(
+        spans.any(
+          (child) => child.text == 'graph' && child.style?.color != null,
+        ),
+        isTrue,
+      );
+      expect(
+        spans.any((child) => child.text == '-->' && child.style?.color != null),
+        isTrue,
+      );
+    });
+
+    testWidgets('uses host-provided source highlighter while editing', (
+      tester,
+    ) async {
+      BlockSourceHighlightRequest? receivedRequest;
+      await tester.pumpWidget(
+        wrap(
+          BlockEditorScope(
+            sourceEditingConfig: BlockSourceEditingConfig(
+              highlighter: (request) {
+                receivedRequest = request;
+                return TextSpan(
+                  text: request.source,
+                  style: request.baseStyle.copyWith(color: Colors.pink),
+                );
+              },
+            ),
+            child: SizedBox(
+              width: 900,
+              child: MermaidBlockWidget(
+                blockId: 'diagram1',
+                delta: TextDelta.fromPlainText('graph TD\nA --> B'),
+                onEvent: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tapAt(tester.getCenter(find.byType(MermaidBlockWidget)));
+      await tester.pump();
+      await tester.pump();
+
+      final field = tester.widget<TextField>(find.byType(TextField));
+      final span = field.controller!.buildTextSpan(
+        context: tester.element(find.byType(TextField)),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+
+      expect(receivedRequest?.blockId, 'diagram1');
+      expect(receivedRequest?.language, 'mermaid');
+      expect(receivedRequest?.source, 'graph TD\nA --> B');
+      expect(span.style?.color, Colors.pink);
+    });
+
+    testWidgets('embedded Mermaid editor handles macOS line shortcuts', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 900,
+            child: MermaidBlockWidget(
+              blockId: 'diagram1',
+              delta: TextDelta.fromPlainText(
+                'graph TD\nA[Start] --> B{Choice}',
+              ),
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      await tester.tapAt(tester.getCenter(find.byType(MermaidBlockWidget)));
+      await tester.pump();
+      await tester.pump();
+
+      final field = tester.widget<TextField>(find.byType(TextField));
+      final controller = field.controller!;
+      controller.selection = const TextSelection.collapsed(offset: 17);
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+
+      expect(controller.selection.extentOffset, 9);
+      expect(controller.selection.isCollapsed, isTrue);
+
+      controller.selection = const TextSelection.collapsed(offset: 17);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+
+      expect(controller.selection.baseOffset, 17);
+      expect(controller.selection.extentOffset, 9);
+    });
+
+    testWidgets('source editor opts out of ambient filled inputs', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            inputDecorationTheme: const InputDecorationTheme(
+              filled: true,
+              fillColor: Colors.red,
+            ),
+          ),
+          home: Scaffold(
+            body: MermaidBlockWidget(
+              blockId: 'diagram1',
+              delta: TextDelta.fromPlainText('graph TD\nA --> B'),
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.decoration?.filled, isFalse);
+      expect(textField.decoration?.fillColor, Colors.transparent);
+    });
+  });
+
   group('TableWidget', () {
     testWidgets('renders header and body cells', (tester) async {
       await tester.pumpWidget(
@@ -438,8 +850,11 @@ void main() {
         ),
       );
 
-      expect(find.text('Model', findRichText: true), findsOneWidget);
-      expect(find.text('Apache-2.0', findRichText: true), findsOneWidget);
+      expect(find.text('Model', findRichText: true), findsAtLeastNWidgets(1));
+      expect(
+        find.text('Apache-2.0', findRichText: true),
+        findsAtLeastNWidgets(1),
+      );
     });
 
     testWidgets('renders inline markdown in inactive editable cells', (
@@ -460,10 +875,314 @@ void main() {
       );
 
       expect(find.text('Bold and soft', findRichText: true), findsOneWidget);
+      final richSpan = richTextSpanWithPlainText(tester, 'Bold and soft');
+      final styledChildren = flattenTextSpan(richSpan).toList();
+      expect(
+        styledChildren.any(
+          (span) =>
+              span.text == 'Bold' && span.style?.fontWeight == FontWeight.bold,
+        ),
+        isTrue,
+      );
+      expect(
+        styledChildren.any(
+          (span) =>
+              span.text == 'soft' && span.style?.fontStyle == FontStyle.italic,
+        ),
+        isTrue,
+      );
+      expect(
+        find.widgetWithText(TextField, '**Bold** and *soft*'),
+        findsNothing,
+      );
+
+      await activateTableCell(tester, '**Bold** and *soft*');
       final textField = tester.widget<TextField>(
         find.widgetWithText(TextField, '**Bold** and *soft*'),
       );
       expect(textField.maxLines, isNull);
+    });
+
+    testWidgets('renders all inactive table cells through inline markdown', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          TableWidget(
+            blockId: 'table1',
+            headers: const ['Link', 'Highlight', 'Wiki', 'Code'],
+            rows: const [
+              [
+                '[Docs](https://example.com)',
+                '==Marked== text',
+                '[[Daily note|Daily]]',
+                '`inline` code',
+              ],
+            ],
+            alignments: const [],
+            onEvent: (_) {},
+          ),
+        ),
+      );
+
+      expect(find.text('Docs', findRichText: true), findsOneWidget);
+      expect(find.text('Marked text', findRichText: true), findsOneWidget);
+      expect(find.text('Daily', findRichText: true), findsOneWidget);
+      expect(find.text('inline code', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('cell text selection theme uses editor blue', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          TableWidget(
+            blockId: 'table1',
+            headers: const ['A'],
+            rows: const [
+              ['1'],
+            ],
+            alignments: const [],
+            onEvent: (_) {},
+          ),
+        ),
+      );
+
+      await activateTableCell(tester, '1');
+      final fieldContext = tester.element(find.widgetWithText(TextField, '1'));
+      final selectionTheme = TextSelectionTheme.of(fieldContext);
+      expect(selectionTheme.selectionColor, const Color(0x663B82F6));
+      expect(selectionTheme.cursorColor, const Color(0xFF3B82F6));
+    });
+
+    testWidgets('active cell surface uses a neutral hover color', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          TableWidget(
+            blockId: 'table1',
+            headers: const ['A'],
+            rows: const [
+              ['1'],
+            ],
+            alignments: const [],
+            onEvent: (_) {},
+          ),
+        ),
+      );
+
+      const cellKey = ValueKey('block-editor-table-cell-table1-row-0-0');
+      var surface = tester.widget<DecoratedBox>(find.byKey(cellKey));
+      expect((surface.decoration as BoxDecoration).color, Colors.transparent);
+
+      await hoverTableCell(tester, '1');
+      surface = tester.widget<DecoratedBox>(find.byKey(cellKey));
+      final hoveredColor = (surface.decoration as BoxDecoration).color;
+      expect(hoveredColor, isNot(Colors.transparent));
+      expect(hoveredColor, isNot(const Color(0x663B82F6)));
+    });
+
+    testWidgets('cell surface does not use scoped text selection color', (
+      tester,
+    ) async {
+      const scopedSelection = Color(0xAA1122EE);
+      await tester.pumpWidget(
+        wrap(
+          BlockEditorScope(
+            selectionColor: scopedSelection,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A'],
+              rows: const [
+                ['1'],
+              ],
+              alignments: const [],
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      await hoverTableCell(tester, '1');
+      const cellKey = ValueKey('block-editor-table-cell-table1-row-0-0');
+      var surface = tester.widget<DecoratedBox>(find.byKey(cellKey));
+      expect(
+        (surface.decoration as BoxDecoration).color,
+        isNot(scopedSelection),
+      );
+
+      await activateTableCell(tester, '1');
+      final fieldContext = tester.element(find.widgetWithText(TextField, '1'));
+      final selectionTheme = TextSelectionTheme.of(fieldContext);
+      expect(selectionTheme.selectionColor, scopedSelection);
+
+      surface = tester.widget<DecoratedBox>(find.byKey(cellKey));
+      expect(
+        (surface.decoration as BoxDecoration).color,
+        isNot(scopedSelection),
+      );
+    });
+
+    testWidgets('focused cell source keeps inline markdown styling', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          TableWidget(
+            blockId: 'table1',
+            headers: const ['Name'],
+            rows: const [
+              ['**Bold** and ==marked=='],
+            ],
+            alignments: const [],
+            onEvent: (_) {},
+          ),
+        ),
+      );
+
+      await activateTableCell(tester, '**Bold** and ==marked==');
+
+      final fieldFinder = find.widgetWithText(
+        TextField,
+        '**Bold** and ==marked==',
+      );
+      final field = tester.widget<TextField>(fieldFinder);
+      final span = field.controller!.buildTextSpan(
+        context: tester.element(fieldFinder),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+      final styledChildren = flattenTextSpan(span).toList();
+
+      expect(
+        styledChildren.any(
+          (child) =>
+              child.text == 'Bold' &&
+              child.style?.fontWeight == FontWeight.bold,
+        ),
+        isTrue,
+      );
+      expect(
+        styledChildren.any(
+          (child) =>
+              child.text == 'marked' && child.style?.backgroundColor != null,
+        ),
+        isTrue,
+      );
+      expect(
+        styledChildren
+            .where((child) => child.text == '**')
+            .every((child) => child.style?.color == Colors.transparent),
+        isTrue,
+      );
+      expect(
+        styledChildren
+            .where((child) => child.text == '==')
+            .every((child) => child.style?.color == Colors.transparent),
+        isTrue,
+      );
+      expect(span.toPlainText(), '**Bold** and ==marked==');
+    });
+
+    testWidgets(
+      'focused table cells keep link and wiki syntax visually hidden',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            TableWidget(
+              blockId: 'table1',
+              headers: const ['Name'],
+              rows: const [
+                ['[Docs](https://example.com) and [[Target page|alias]]'],
+              ],
+              alignments: const [],
+              onEvent: (_) {},
+            ),
+          ),
+        );
+
+        await activateTableCell(
+          tester,
+          '[Docs](https://example.com) and [[Target page|alias]]',
+        );
+
+        final fieldFinder = find.widgetWithText(
+          TextField,
+          '[Docs](https://example.com) and [[Target page|alias]]',
+        );
+        final field = tester.widget<TextField>(fieldFinder);
+        final span = field.controller!.buildTextSpan(
+          context: tester.element(fieldFinder),
+          style: const TextStyle(color: Colors.white),
+          withComposing: false,
+        );
+        final styledChildren = flattenTextSpan(span).toList();
+
+        expect(
+          span.toPlainText(),
+          '[Docs](https://example.com) and [[Target page|alias]]',
+        );
+        expect(
+          styledChildren.any(
+            (child) =>
+                child.text == 'Docs' &&
+                child.style?.color != Colors.transparent,
+          ),
+          isTrue,
+        );
+        expect(
+          styledChildren.any(
+            (child) =>
+                child.text == 'alias' &&
+                child.style?.color != Colors.transparent,
+          ),
+          isTrue,
+        );
+        expect(
+          styledChildren
+              .where(
+                (child) =>
+                    child.text == '[' ||
+                    child.text == '](https://example.com)' ||
+                    child.text == '[[' ||
+                    child.text == 'Target page|',
+              )
+              .every((child) => child.style?.color == Colors.transparent),
+          isTrue,
+        );
+      },
+    );
+
+    testWidgets('cell editors opt out of ambient filled input themes', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            inputDecorationTheme: const InputDecorationTheme(
+              filled: true,
+              fillColor: Colors.red,
+            ),
+          ),
+          home: Scaffold(
+            body: TableWidget(
+              blockId: 'table1',
+              headers: const ['A'],
+              rows: const [
+                ['1'],
+              ],
+              alignments: const [],
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      await activateTableCell(tester, '1');
+      final textField = tester.widget<TextField>(
+        find.widgetWithText(TextField, '1'),
+      );
+      expect(textField.decoration?.filled, isFalse);
+      expect(textField.decoration?.fillColor, Colors.transparent);
     });
 
     testWidgets('shrink-wraps narrow tables instead of filling the row', (
@@ -488,6 +1207,129 @@ void main() {
 
       final tableSize = tester.getSize(find.byType(Table));
       expect(tableSize.width, lessThan(500));
+    });
+
+    testWidgets('trackpad scroll over resize handles does not resize cells', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 500,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A', 'B'],
+              rows: const [
+                ['1', '2'],
+                ['3', '4'],
+              ],
+              alignments: const [],
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      await hoverTableCell(tester, '1');
+      final tableFinder = find.byType(Table);
+      final initialTableSize = tester.getSize(tableFinder);
+
+      final columnHandle = _tableResizeHandleFinder(
+        SystemMouseCursors.resizeColumn,
+      ).first;
+      final columnGesture = await tester.startGesture(
+        tester.getCenter(columnHandle),
+        kind: PointerDeviceKind.trackpad,
+      );
+      await columnGesture.panZoomUpdate(
+        tester.getCenter(columnHandle),
+        pan: const Offset(120, 0),
+      );
+      await tester.pump();
+      await columnGesture.up();
+      await tester.pump();
+
+      expect(tester.getSize(tableFinder).width, initialTableSize.width);
+
+      final rowHandle = _tableResizeHandleFinder(
+        SystemMouseCursors.resizeRow,
+      ).first;
+      final rowGesture = await tester.startGesture(
+        tester.getCenter(rowHandle),
+        kind: PointerDeviceKind.trackpad,
+      );
+      await rowGesture.panZoomUpdate(
+        tester.getCenter(rowHandle),
+        pan: const Offset(0, 120),
+      );
+      await tester.pump();
+      await rowGesture.up();
+      await tester.pump();
+
+      expect(tester.getSize(tableFinder).height, initialTableSize.height);
+    });
+
+    testWidgets('primary mouse drag over resize handles resizes cells', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 500,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A', 'B'],
+              rows: const [
+                ['1', '2'],
+                ['3', '4'],
+              ],
+              alignments: const [],
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      await hoverTableCell(tester, '1');
+      final tableFinder = find.byType(Table);
+      final initialTableSize = tester.getSize(tableFinder);
+
+      final columnHandle = _tableResizeHandleFinder(
+        SystemMouseCursors.resizeColumn,
+      ).first;
+      final columnGesture = await tester.startGesture(
+        tester.getCenter(columnHandle),
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryMouseButton,
+      );
+      await columnGesture.moveBy(const Offset(48, 0));
+      await tester.pump();
+      await columnGesture.up();
+      await tester.pump();
+
+      expect(
+        tester.getSize(tableFinder).width,
+        greaterThan(initialTableSize.width),
+      );
+
+      final rowHandle = _tableResizeHandleFinder(
+        SystemMouseCursors.resizeRow,
+      ).first;
+      final heightBeforeRowResize = tester.getSize(tableFinder).height;
+      final rowGesture = await tester.startGesture(
+        tester.getCenter(rowHandle),
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryMouseButton,
+      );
+      await rowGesture.moveBy(const Offset(0, 48));
+      await tester.pump();
+      await rowGesture.up();
+      await tester.pump();
+
+      expect(
+        tester.getSize(tableFinder).height,
+        greaterThan(heightBeforeRowResize),
+      );
     });
 
     testWidgets('positions table action controls outside the table border', (
@@ -575,6 +1417,7 @@ void main() {
           ),
         ),
       );
+      await activateTableCell(tester, '1');
       await tester.enterText(find.widgetWithText(TextField, '1'), 'updated');
       await tester.pump();
 
@@ -614,7 +1457,7 @@ void main() {
       expect(events.single, isA<TableRowInsertedEvent>());
       expect((events.single as TableRowInsertedEvent).index, 2);
       await tester.pump();
-      expect(find.byType(TextField), findsNWidgets(8));
+      expect(_tableCellSurfaceFinder('table1'), findsNWidgets(8));
       await addRowGesture.up();
       events.clear();
 
@@ -624,7 +1467,7 @@ void main() {
       expect(events.single, isA<TableRowDeletedEvent>());
       expect((events.single as TableRowDeletedEvent).index, 2);
       await tester.pump();
-      expect(find.byType(TextField), findsNWidgets(6));
+      expect(_tableCellSurfaceFinder('table1'), findsNWidgets(6));
       await deleteRowGesture.up();
       events.clear();
 
@@ -635,7 +1478,7 @@ void main() {
       expect(events.single, isA<TableColumnDeletedEvent>());
       expect((events.single as TableColumnDeletedEvent).index, 1);
       await tester.pump();
-      expect(find.byType(TextField), findsNWidgets(3));
+      expect(_tableCellSurfaceFinder('table1'), findsNWidgets(3));
       await deleteColumnGesture.up();
     });
 
@@ -715,6 +1558,21 @@ void main() {
       );
       expect(e.blockId, 'raw1');
       expect(e.text, '<div>raw</div>');
+    });
+
+    test('CalloutTitleChangedEvent carries blockId and title', () {
+      const e = CalloutTitleChangedEvent(blockId: 'callout1', title: 'Note');
+      expect(e.blockId, 'callout1');
+      expect(e.title, 'Note');
+    });
+
+    test('CalloutVariantChangedEvent carries blockId and variant', () {
+      const e = CalloutVariantChangedEvent(
+        blockId: 'callout1',
+        variant: 'warning',
+      );
+      expect(e.blockId, 'callout1');
+      expect(e.variant, 'warning');
     });
   });
 }

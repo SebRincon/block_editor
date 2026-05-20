@@ -228,7 +228,7 @@ void main() {
         ),
       );
       final span = firstSpanFrom(tester);
-      expect(span.style?.backgroundColor, isNot(const Color(0x443399FF)));
+      expect(span.style?.backgroundColor, isNot(const Color(0x663B82F6)));
     });
 
     testWidgets('no highlight for CollapsedSelection', (tester) async {
@@ -245,7 +245,7 @@ void main() {
         ),
       );
       final span = firstSpanFrom(tester);
-      expect(span.style?.backgroundColor, isNot(const Color(0x443399FF)));
+      expect(span.style?.backgroundColor, isNot(const Color(0x663B82F6)));
     });
 
     testWidgets('highlight applied to op within selection range', (
@@ -265,7 +265,7 @@ void main() {
         ),
       );
       final span = firstSpanFrom(tester);
-      expect(span.style!.backgroundColor, const Color(0x443399FF));
+      expect(span.style!.backgroundColor, const Color(0x663B82F6));
     });
 
     testWidgets('op outside selection range has no highlight', (tester) async {
@@ -283,7 +283,7 @@ void main() {
         ),
       );
       final span = firstSpanFrom(tester);
-      expect(span.style?.backgroundColor, isNot(const Color(0x443399FF)));
+      expect(span.style?.backgroundColor, isNot(const Color(0x663B82F6)));
     });
   });
 

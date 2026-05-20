@@ -2,7 +2,15 @@ library;
 
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart' show GestureBinding, PointerScrollEvent;
+import 'package:flutter/gestures.dart'
+    show
+        GestureBinding,
+        PointerCancelEvent,
+        PointerDownEvent,
+        PointerMoveEvent,
+        PointerScrollEvent,
+        PointerUpEvent,
+        kPrimaryMouseButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:block_editor/block_editor.dart';
@@ -1601,7 +1609,12 @@ class _HighlightedSourceController extends TextEditingController {
 }
 
 class _MarkdownInlineEditingController extends TextEditingController {
-  _MarkdownInlineEditingController({required String text}) : super(text: text);
+  _MarkdownInlineEditingController({
+    required String text,
+    this.hideSyntaxMarkers = false,
+  }) : super(text: text);
+
+  final bool hideSyntaxMarkers;
 
   @override
   TextSpan buildTextSpan({
@@ -1622,6 +1635,7 @@ class _MarkdownInlineEditingController extends TextEditingController {
         baseStyle,
         editorTheme,
         markdownTheme,
+        hideSyntaxMarkers: hideSyntaxMarkers,
       ),
     );
   }
@@ -1631,8 +1645,9 @@ List<TextSpan> _buildMarkdownInlineEditingSpans(
   String input,
   TextStyle baseStyle,
   BlockEditorThemeData editorTheme,
-  MarkdownDocumentThemeData markdownTheme,
-) {
+  MarkdownDocumentThemeData markdownTheme, {
+  required bool hideSyntaxMarkers,
+}) {
   final spans = <TextSpan>[];
   var index = 0;
   while (index < input.length) {
@@ -1642,6 +1657,7 @@ List<TextSpan> _buildMarkdownInlineEditingSpans(
       baseStyle,
       editorTheme,
       markdownTheme,
+      hideSyntaxMarkers: hideSyntaxMarkers,
     );
     if (token != null) {
       spans.addAll(token.spans);
@@ -1661,8 +1677,9 @@ List<TextSpan> _buildMarkdownInlineEditingSpans(
   int index,
   TextStyle baseStyle,
   BlockEditorThemeData editorTheme,
-  MarkdownDocumentThemeData markdownTheme,
-) {
+  MarkdownDocumentThemeData markdownTheme, {
+  required bool hideSyntaxMarkers,
+}) {
   final variableEnd = input.startsWith('{{', index)
       ? input.indexOf('}}', index + 2)
       : -1;
@@ -1684,6 +1701,7 @@ List<TextSpan> _buildMarkdownInlineEditingSpans(
     baseStyle,
     markdownTheme,
     embed: true,
+    hideSyntaxMarkers: hideSyntaxMarkers,
   );
   if (embed != null) return embed;
 
@@ -1693,6 +1711,7 @@ List<TextSpan> _buildMarkdownInlineEditingSpans(
     baseStyle,
     markdownTheme,
     embed: false,
+    hideSyntaxMarkers: hideSyntaxMarkers,
   );
   if (wiki != null) return wiki;
 
@@ -1716,6 +1735,7 @@ List<TextSpan> _buildMarkdownInlineEditingSpans(
     index,
     baseStyle,
     markdownTheme,
+    hideSyntaxMarkers: hideSyntaxMarkers,
   );
   if (link != null) return link;
 
@@ -1740,6 +1760,7 @@ List<TextSpan> _buildMarkdownInlineEditingSpans(
       markdownTheme,
       delimiter: candidate.delimiter,
       attributes: candidate.attributes,
+      hideSyntaxMarkers: hideSyntaxMarkers,
     );
     if (token != null) return token;
   }
@@ -1754,11 +1775,14 @@ List<TextSpan> _buildMarkdownInlineEditingSpans(
   MarkdownDocumentThemeData markdownTheme, {
   required String delimiter,
   required InlineAttributes attributes,
+  required bool hideSyntaxMarkers,
 }) {
   if (!input.startsWith(delimiter, index)) return null;
   final close = input.indexOf(delimiter, index + delimiter.length);
   if (close <= index + delimiter.length) return null;
-  final syntaxStyle = _markdownInlineSyntaxStyle(baseStyle, markdownTheme);
+  final syntaxStyle = hideSyntaxMarkers
+      ? _hiddenMarkdownInlineSyntaxStyle(baseStyle)
+      : _markdownInlineSyntaxStyle(baseStyle, markdownTheme);
   final contentStyle = _markdownInlineContentStyle(
     attributes,
     baseStyle,
@@ -1781,14 +1805,17 @@ List<TextSpan> _buildMarkdownInlineEditingSpans(
   String input,
   int index,
   TextStyle baseStyle,
-  MarkdownDocumentThemeData markdownTheme,
-) {
+  MarkdownDocumentThemeData markdownTheme, {
+  required bool hideSyntaxMarkers,
+}) {
   if (!input.startsWith('[', index)) return null;
   final closeLabel = input.indexOf('](', index + 1);
   if (closeLabel < 0) return null;
   final closeUrl = input.indexOf(')', closeLabel + 2);
   if (closeUrl < 0) return null;
-  final syntaxStyle = _markdownInlineSyntaxStyle(baseStyle, markdownTheme);
+  final syntaxStyle = hideSyntaxMarkers
+      ? _hiddenMarkdownInlineSyntaxStyle(baseStyle)
+      : _markdownInlineSyntaxStyle(baseStyle, markdownTheme);
   final linkStyle = baseStyle.copyWith(color: markdownTheme.linkColor);
   return (
     spans: [
@@ -1809,6 +1836,7 @@ List<TextSpan> _buildMarkdownInlineEditingSpans(
   TextStyle baseStyle,
   MarkdownDocumentThemeData markdownTheme, {
   required bool embed,
+  required bool hideSyntaxMarkers,
 }) {
   final prefix = embed ? '![[' : '[[';
   if (!input.startsWith(prefix, index)) return null;
@@ -1817,7 +1845,9 @@ List<TextSpan> _buildMarkdownInlineEditingSpans(
   final raw = input.substring(index + prefix.length, close);
   if (raw.trim().isEmpty) return null;
   final separator = raw.indexOf('|');
-  final syntaxStyle = _markdownInlineSyntaxStyle(baseStyle, markdownTheme);
+  final syntaxStyle = hideSyntaxMarkers
+      ? _hiddenMarkdownInlineSyntaxStyle(baseStyle)
+      : _markdownInlineSyntaxStyle(baseStyle, markdownTheme);
   final wikiStyle = baseStyle.copyWith(
     color: markdownTheme.wikiLinkColor,
     backgroundColor: embed
@@ -1884,6 +1914,21 @@ TextStyle _markdownInlineSyntaxStyle(
   return baseStyle.copyWith(
     color: markdownTheme.codeBlockMutedForeground.withValues(alpha: 0.74),
     backgroundColor: null,
+    fontWeight: FontWeight.normal,
+    fontStyle: FontStyle.normal,
+    decoration: TextDecoration.none,
+  );
+}
+
+TextStyle _hiddenMarkdownInlineSyntaxStyle(TextStyle baseStyle) {
+  return baseStyle.copyWith(
+    color: Colors.transparent,
+    backgroundColor: Colors.transparent,
+    decorationColor: Colors.transparent,
+    fontSize: 0.01,
+    letterSpacing: 0,
+    wordSpacing: 0,
+    height: 0.01,
     fontWeight: FontWeight.normal,
     fontStyle: FontStyle.normal,
     decoration: TextDecoration.none,
@@ -3894,7 +3939,10 @@ class _TableCellContentState extends State<_TableCellContent> {
   @override
   void initState() {
     super.initState();
-    _controller = _MarkdownInlineEditingController(text: widget.text);
+    _controller = _MarkdownInlineEditingController(
+      text: widget.text,
+      hideSyntaxMarkers: true,
+    );
     _focusNode = FocusNode(
       onKeyEvent: (_, event) =>
           handleEmbeddedTextEditingShortcut(_controller, event),
@@ -4201,9 +4249,43 @@ class _TableCellResizeHandle extends StatefulWidget {
 
 class _TableCellResizeHandleState extends State<_TableCellResizeHandle> {
   bool _hovered = false;
+  bool _dragging = false;
+  Offset? _lastDragPosition;
 
-  Widget _preventParentScrollWhileHovering(Widget child) {
+  void _startDrag(PointerDownEvent event) {
+    if ((event.buttons & kPrimaryMouseButton) == 0) return;
+    _dragging = true;
+    _lastDragPosition = event.position;
+  }
+
+  void _updateDrag(PointerMoveEvent event) {
+    if (!_dragging) return;
+    if ((event.buttons & kPrimaryMouseButton) == 0) {
+      _endDrag();
+      return;
+    }
+
+    final lastPosition = _lastDragPosition;
+    _lastDragPosition = event.position;
+    if (lastPosition == null) return;
+
+    final delta = event.position - lastPosition;
+    final resizeDelta = widget.axis == Axis.horizontal ? delta.dx : delta.dy;
+    if (resizeDelta != 0) widget.onDragDelta(resizeDelta);
+  }
+
+  void _endDrag([Object? _]) {
+    _dragging = false;
+    _lastDragPosition = null;
+  }
+
+  Widget _ignoreScrollAndResizeOnlyOnPrimaryDrag(Widget child) {
     return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: _startDrag,
+      onPointerMove: _updateDrag,
+      onPointerUp: (PointerUpEvent event) => _endDrag(event),
+      onPointerCancel: (PointerCancelEvent event) => _endDrag(event),
       onPointerSignal: (event) {
         if (event is PointerScrollEvent) {
           GestureBinding.instance.pointerSignalResolver.register(event, (_) {});
@@ -4229,38 +4311,15 @@ class _TableCellResizeHandleState extends State<_TableCellResizeHandle> {
         bottom: 0,
         end: 0,
         width: 7,
-        child: _preventParentScrollWhileHovering(
+        child: _ignoreScrollAndResizeOnlyOnPrimaryDrag(
           MouseRegion(
             cursor: SystemMouseCursors.resizeColumn,
             onEnter: (_) => setState(() => _hovered = true),
             onExit: (_) => setState(() => _hovered = false),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragUpdate: (details) =>
-                  widget.onDragDelta(details.delta.dx),
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 90),
-                      color: trackColor,
-                    ),
-                  ),
-                  Positioned(
-                    top: 0,
-                    bottom: 0,
-                    right: 0,
-                    width: 2,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 90),
-                      decoration: BoxDecoration(
-                        color: barColor,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            child: _TableResizeHandleTrack(
+              axis: widget.axis,
+              trackColor: trackColor,
+              barColor: barColor,
             ),
           ),
         ),
@@ -4272,40 +4331,86 @@ class _TableCellResizeHandleState extends State<_TableCellResizeHandle> {
       end: 0,
       bottom: 0,
       height: 7,
-      child: _preventParentScrollWhileHovering(
+      child: _ignoreScrollAndResizeOnlyOnPrimaryDrag(
         MouseRegion(
           cursor: SystemMouseCursors.resizeRow,
           onEnter: (_) => setState(() => _hovered = true),
           onExit: (_) => setState(() => _hovered = false),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onVerticalDragUpdate: (details) =>
-                widget.onDragDelta(details.delta.dy),
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 90),
-                    color: trackColor,
-                  ),
-                ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: 2,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 90),
-                    decoration: BoxDecoration(
-                      color: barColor,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          child: _TableResizeHandleTrack(
+            axis: widget.axis,
+            trackColor: trackColor,
+            barColor: barColor,
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _TableResizeHandleTrack extends StatelessWidget {
+  const _TableResizeHandleTrack({
+    required this.axis,
+    required this.trackColor,
+    required this.barColor,
+  });
+
+  final Axis axis;
+  final Color trackColor;
+  final Color barColor;
+
+  @override
+  Widget build(BuildContext context) {
+    if (axis == Axis.horizontal) {
+      return SizedBox.expand(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 90),
+                color: trackColor,
+              ),
+            ),
+            Positioned(
+              top: 0,
+              bottom: 0,
+              right: 0,
+              width: 2,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 90),
+                decoration: BoxDecoration(
+                  color: barColor,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox.expand(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 90),
+              color: trackColor,
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 2,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 90),
+              decoration: BoxDecoration(
+                color: barColor,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

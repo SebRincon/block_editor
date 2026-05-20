@@ -4,7 +4,7 @@ import '../theme/app_theme.dart';
 
 /// The bottom navigation bar shown on narrow screens (below 768px wide).
 ///
-/// Built entirely from scratch — no [BottomNavigationBar] widget. Three items
+/// Built entirely from scratch — no [BottomNavigationBar] widget. Items
 /// are laid out in a [Row], each responding to tap and highlighting the active
 /// destination with the accent color.
 class NavBottomBar extends StatelessWidget {
@@ -50,6 +50,12 @@ class NavBottomBar extends StatelessWidget {
                 label: 'Custom',
                 selected: selectedIndex == 2,
                 onTap: () => onDestinationSelected(2),
+              ),
+              _BottomNavItem(
+                icon: Icons.tune_rounded,
+                label: 'Tune',
+                selected: selectedIndex == 3,
+                onTap: () => onDestinationSelected(3),
               ),
             ],
           ),

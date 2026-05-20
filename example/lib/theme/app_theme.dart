@@ -1,338 +1,283 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' as material;
+import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 
-/// Provides the complete light and dark [ThemeData] for the block_editor
-/// example application.
+/// Shared example-app theme wiring.
 ///
-/// Both themes are built entirely from scratch. No seed colors, no Material 3
-/// dynamic color, no stock component defaults. Every component theme is
-/// explicitly overridden so the application reads as its own design system
-/// rather than a Material app with a custom color.
+/// The default dark theme mirrors `mock_ui`:
+///
+/// - `ShadcnApp`
+/// - `CustomColorSchemes.vsCodeDark()`
+/// - `radius: 0.5`
+/// - `Typography.geist()`
+///
+/// The Material [ThemeData] values are adapters for the example app's legacy
+/// Material widgets. The editor package itself reads the shadcn theme first.
 abstract final class AppTheme {
-  static const Color _accent = Color(0xFF3B82F6);
-  static const Color _accentDark = Color(0xFF60A5FA);
+  static const shadcn.Typography _typography = shadcn.Typography.geist();
 
-  static const Color _lightBackground = Color(0xFFF9F9F9);
-  static const Color _lightSurface = Color(0xFFFFFFFF);
-  static const Color _lightSurfaceVariant = Color(0xFFF2F2F2);
-  static const Color _lightBorder = Color(0xFFE4E4E7);
-  static const Color _lightText = Color(0xFF111111);
-  static const Color _lightTextMuted = Color(0xFF71717A);
-
-  static const Color _darkBackground = Color(0xFF111111);
-  static const Color _darkSurface = Color(0xFF1C1C1C);
-  static const Color _darkSurfaceVariant = Color(0xFF262626);
-  static const Color _darkBorder = Color(0xFF2E2E2E);
-  static const Color _darkText = Color(0xFFF4F4F5);
-  static const Color _darkTextMuted = Color(0xFF71717A);
-
-  static const _radius = BorderRadius.all(Radius.circular(12));
-  static const _radiusSmall = BorderRadius.all(Radius.circular(8));
-
-  /// The light theme.
-  static ThemeData get light => _build(
-    brightness: Brightness.light,
-    background: _lightBackground,
-    surface: _lightSurface,
-    surfaceVariant: _lightSurfaceVariant,
-    border: _lightBorder,
-    text: _lightText,
-    textMuted: _lightTextMuted,
-    accent: _accent,
+  /// The exact shadcn dark theme used by `mock_ui`.
+  static final shadcn.ThemeData shadcnDark = shadcn.ThemeData(
+    colorScheme: vsCodeDarkColorScheme,
+    radius: 0.5,
+    typography: _typography,
   );
 
-  /// The dark theme.
-  static ThemeData get dark => _build(
-    brightness: Brightness.dark,
-    background: _darkBackground,
-    surface: _darkSurface,
-    surfaceVariant: _darkSurfaceVariant,
-    border: _darkBorder,
-    text: _darkText,
-    textMuted: _darkTextMuted,
-    accent: _accentDark,
+  /// A light companion theme for local contrast checks.
+  ///
+  /// The playground starts in [material.ThemeMode.dark] so the first-run
+  /// experience matches `mock_ui`.
+  static final shadcn.ThemeData shadcnLight = shadcn.ThemeData(
+    colorScheme: shadcn.ColorSchemes.lightDefaultColor,
+    radius: 0.5,
+    typography: _typography,
   );
 
-  static ThemeData _build({
-    required Brightness brightness,
-    required Color background,
-    required Color surface,
-    required Color surfaceVariant,
-    required Color border,
-    required Color text,
-    required Color textMuted,
-    required Color accent,
-  }) {
-    final colorScheme = ColorScheme(
-      brightness: brightness,
-      primary: accent,
-      onPrimary: Colors.white,
-      secondary: accent,
-      onSecondary: Colors.white,
-      error: const Color(0xFFEF4444),
-      onError: Colors.white,
-      surface: surface,
-      onSurface: text,
-      surfaceContainerHighest: surfaceVariant,
-      outline: border,
-    );
+  /// Material adapter for light-mode tests and local contrast checks.
+  static material.ThemeData get light =>
+      _materialFromShadcn(shadcn.ColorSchemes.lightDefaultColor);
 
-    return ThemeData(
-      useMaterial3: false,
-      brightness: brightness,
-      colorScheme: colorScheme,
-      scaffoldBackgroundColor: background,
-      canvasColor: surface,
-      dividerColor: border,
-      fontFamily: 'Inter',
-      textTheme: _textTheme(text, textMuted),
-      appBarTheme: AppBarTheme(
-        backgroundColor: surface,
-        foregroundColor: text,
+  /// Material adapter for the `mock_ui` VS Code dark shadcn theme.
+  static material.ThemeData get dark =>
+      _materialFromShadcn(vsCodeDarkColorScheme);
+
+  /// Returns the Material adapter that matches a shadcn theme mode.
+  static material.ThemeData materialFor(material.ThemeMode mode) {
+    return mode == material.ThemeMode.light ? light : dark;
+  }
+
+  /// Visual Studio Code default dark color scheme copied from `mock_ui`.
+  static const shadcn.ColorScheme vsCodeDarkColorScheme = shadcn.ColorScheme(
+    brightness: material.Brightness.dark,
+    background: material.Color(0xFF1E1E1E),
+    foreground: material.Color(0xFFCCCCCC),
+    card: material.Color(0xFF252526),
+    cardForeground: material.Color(0xFFCCCCCC),
+    popover: material.Color(0xFF252526),
+    popoverForeground: material.Color(0xFFCCCCCC),
+    primary: material.Color(0xFF007ACC),
+    primaryForeground: material.Color(0xFFFFFFFF),
+    secondary: material.Color(0xFF37373D),
+    secondaryForeground: material.Color(0xFFCCCCCC),
+    muted: material.Color(0xFF2D2D2D),
+    mutedForeground: material.Color(0xFF808080),
+    accent: material.Color(0xFF37373D),
+    accentForeground: material.Color(0xFFCCCCCC),
+    destructive: material.Color(0xFFF44747),
+    destructiveForeground: material.Color(0xFFFFFFFF),
+    border: material.Color(0xFF303031),
+    input: material.Color(0xFF3C3C3C),
+    ring: material.Color(0xFF0E639C),
+    chart1: material.Color(0xFF569CD6),
+    chart2: material.Color(0xFF9CDCFE),
+    chart3: material.Color(0xFFB5CEA8),
+    chart4: material.Color(0xFFCE9178),
+    chart5: material.Color(0xFFDCDCAA),
+    sidebar: material.Color(0xFF252526),
+    sidebarForeground: material.Color(0xFFCCCCCC),
+    sidebarPrimary: material.Color(0xFF007ACC),
+    sidebarPrimaryForeground: material.Color(0xFFFFFFFF),
+    sidebarAccent: material.Color(0xFF37373D),
+    sidebarAccentForeground: material.Color(0xFFCCCCCC),
+    sidebarBorder: material.Color(0xFF303031),
+    sidebarRing: material.Color(0xFF0E639C),
+  );
+
+  static material.ThemeData _materialFromShadcn(shadcn.ColorScheme colors) {
+    final materialScheme =
+        material.ColorScheme.fromSeed(
+          seedColor: colors.primary,
+          brightness: colors.brightness,
+          surface: colors.background,
+          primary: colors.primary,
+          secondary: colors.secondary,
+          error: colors.destructive,
+        ).copyWith(
+          onSurface: colors.foreground,
+          surface: colors.background,
+          surfaceContainerHighest: colors.muted,
+          outline: colors.border,
+          outlineVariant: colors.border,
+          onSurfaceVariant: colors.mutedForeground,
+          secondaryContainer: colors.accent,
+          onSecondaryContainer: colors.accentForeground,
+        );
+
+    final appColors = AppColors.fromShadcn(colors);
+    final textTheme = _textTheme(colors);
+    final radius = material.BorderRadius.circular(6);
+    final smallRadius = material.BorderRadius.circular(4);
+
+    return material.ThemeData.from(colorScheme: materialScheme).copyWith(
+      brightness: colors.brightness,
+      scaffoldBackgroundColor: colors.background,
+      canvasColor: colors.card,
+      dividerColor: colors.border,
+      textTheme: textTheme,
+      primaryTextTheme: textTheme,
+      appBarTheme: material.AppBarTheme(
+        backgroundColor: colors.card,
+        foregroundColor: colors.foreground,
         elevation: 0,
         scrolledUnderElevation: 0,
-        titleTextStyle: TextStyle(
-          color: text,
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.2,
+        titleTextStyle: _typography.textSmall.copyWith(
+          color: colors.foreground,
+          fontWeight: material.FontWeight.w600,
         ),
-        iconTheme: IconThemeData(color: textMuted, size: 20),
+        iconTheme: material.IconThemeData(
+          color: colors.mutedForeground,
+          size: 20,
+        ),
       ),
-      cardTheme: CardThemeData(
-        color: surface,
+      cardTheme: material.CardThemeData(
+        color: colors.card,
         elevation: 0,
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: _radius,
-          side: BorderSide(color: border),
+        margin: material.EdgeInsets.zero,
+        shape: material.RoundedRectangleBorder(
+          borderRadius: radius,
+          side: material.BorderSide(color: colors.border),
         ),
       ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: accent,
-          foregroundColor: Colors.white,
+      elevatedButtonTheme: material.ElevatedButtonThemeData(
+        style: material.ElevatedButton.styleFrom(
+          backgroundColor: colors.primary,
+          foregroundColor: colors.primaryForeground,
           elevation: 0,
-          shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          shape: const RoundedRectangleBorder(borderRadius: _radius),
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            letterSpacing: -0.1,
+          shadowColor: material.Colors.transparent,
+          padding: const material.EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 10,
+          ),
+          shape: material.RoundedRectangleBorder(borderRadius: radius),
+          textStyle: _typography.textSmall.copyWith(
+            fontWeight: material.FontWeight.w500,
           ),
         ),
       ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: text,
-          side: BorderSide(color: border),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          shape: const RoundedRectangleBorder(borderRadius: _radius),
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            letterSpacing: -0.1,
+      outlinedButtonTheme: material.OutlinedButtonThemeData(
+        style: material.OutlinedButton.styleFrom(
+          foregroundColor: colors.foreground,
+          side: material.BorderSide(color: colors.border),
+          padding: const material.EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 10,
+          ),
+          shape: material.RoundedRectangleBorder(borderRadius: radius),
+          textStyle: _typography.textSmall.copyWith(
+            fontWeight: material.FontWeight.w500,
           ),
         ),
       ),
-      textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: accent,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          shape: const RoundedRectangleBorder(borderRadius: _radiusSmall),
-          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+      textButtonTheme: material.TextButtonThemeData(
+        style: material.TextButton.styleFrom(
+          foregroundColor: colors.primary,
+          padding: const material.EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 8,
+          ),
+          shape: material.RoundedRectangleBorder(borderRadius: smallRadius),
+          textStyle: _typography.textSmall.copyWith(
+            fontWeight: material.FontWeight.w500,
+          ),
         ),
       ),
-      inputDecorationTheme: InputDecorationTheme(
+      inputDecorationTheme: material.InputDecorationTheme(
         filled: true,
-        fillColor: surfaceVariant,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 12,
+        fillColor: colors.input,
+        contentPadding: const material.EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
         ),
-        border: OutlineInputBorder(
-          borderRadius: _radius,
-          borderSide: BorderSide(color: border),
+        border: material.OutlineInputBorder(
+          borderRadius: radius,
+          borderSide: material.BorderSide(color: colors.border),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: _radius,
-          borderSide: BorderSide(color: border),
+        enabledBorder: material.OutlineInputBorder(
+          borderRadius: radius,
+          borderSide: material.BorderSide(color: colors.border),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: _radius,
-          borderSide: BorderSide(color: accent, width: 1.5),
+        focusedBorder: material.OutlineInputBorder(
+          borderRadius: radius,
+          borderSide: material.BorderSide(color: colors.ring, width: 1.5),
         ),
-        hintStyle: TextStyle(color: textMuted, fontSize: 14),
-        labelStyle: TextStyle(color: textMuted, fontSize: 14),
+        hintStyle: _typography.textSmall.copyWith(
+          color: colors.mutedForeground,
+        ),
+        labelStyle: _typography.textSmall.copyWith(
+          color: colors.mutedForeground,
+        ),
       ),
-      dialogTheme: DialogThemeData(
-        backgroundColor: surface,
+      dialogTheme: material.DialogThemeData(
+        backgroundColor: colors.popover,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: _radius,
-          side: BorderSide(color: border),
+        shape: material.RoundedRectangleBorder(
+          borderRadius: radius,
+          side: material.BorderSide(color: colors.border),
         ),
-        titleTextStyle: TextStyle(
-          color: text,
-          fontSize: 17,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.3,
+        titleTextStyle: _typography.textLarge.copyWith(
+          color: colors.popoverForeground,
         ),
-        contentTextStyle: TextStyle(
-          color: textMuted,
-          fontSize: 14,
-          height: 1.6,
+        contentTextStyle: _typography.textSmall.copyWith(
+          color: colors.mutedForeground,
+          height: 1.5,
         ),
       ),
-      listTileTheme: ListTileThemeData(
-        shape: const RoundedRectangleBorder(borderRadius: _radiusSmall),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        iconColor: textMuted,
-        textColor: text,
-        titleTextStyle: TextStyle(
-          color: text,
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
+      iconTheme: material.IconThemeData(
+        color: colors.mutedForeground,
+        size: 20,
       ),
-      iconTheme: IconThemeData(color: textMuted, size: 20),
-      dividerTheme: DividerThemeData(color: border, thickness: 1, space: 1),
-      tooltipTheme: TooltipThemeData(
-        decoration: BoxDecoration(
-          color: brightness == Brightness.dark
-              ? const Color(0xFF2E2E2E)
-              : const Color(0xFF111111),
-          borderRadius: _radiusSmall,
+      dividerTheme: material.DividerThemeData(
+        color: colors.border,
+        thickness: 1,
+        space: 1,
+      ),
+      tooltipTheme: material.TooltipThemeData(
+        decoration: material.BoxDecoration(
+          color: colors.popover,
+          border: material.Border.all(color: colors.border),
+          borderRadius: smallRadius,
         ),
-        textStyle: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
+        textStyle: _typography.xSmall.copyWith(color: colors.popoverForeground),
         waitDuration: const Duration(milliseconds: 600),
       ),
-      scrollbarTheme: ScrollbarThemeData(
-        thumbColor: WidgetStateProperty.all(border),
-        radius: const Radius.circular(4),
-        thickness: WidgetStateProperty.all(4),
+      scrollbarTheme: material.ScrollbarThemeData(
+        thumbColor: material.WidgetStateProperty.all(colors.border),
+        radius: const material.Radius.circular(3),
+        thickness: material.WidgetStateProperty.all(4),
       ),
-      extensions: [
-        AppColors(
-          background: background,
-          surface: surface,
-          surfaceVariant: surfaceVariant,
-          border: border,
-          text: text,
-          textMuted: textMuted,
-          accent: accent,
-        ),
-      ],
+      extensions: [appColors],
     );
   }
 
-  static TextTheme _textTheme(Color text, Color muted) {
-    return TextTheme(
-      displayLarge: TextStyle(
-        color: text,
-        fontSize: 48,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -1.5,
-        height: 1.1,
-      ),
-      displayMedium: TextStyle(
-        color: text,
-        fontSize: 36,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -1.0,
-        height: 1.15,
-      ),
-      headlineLarge: TextStyle(
-        color: text,
-        fontSize: 28,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.8,
-        height: 1.2,
-      ),
-      headlineMedium: TextStyle(
-        color: text,
-        fontSize: 22,
-        fontWeight: FontWeight.w600,
-        letterSpacing: -0.5,
-        height: 1.25,
-      ),
-      headlineSmall: TextStyle(
-        color: text,
-        fontSize: 18,
-        fontWeight: FontWeight.w600,
-        letterSpacing: -0.3,
-        height: 1.3,
-      ),
-      titleLarge: TextStyle(
-        color: text,
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        letterSpacing: -0.2,
-        height: 1.4,
-      ),
-      titleMedium: TextStyle(
-        color: text,
-        fontSize: 15,
-        fontWeight: FontWeight.w500,
-        letterSpacing: -0.1,
-        height: 1.4,
-      ),
-      titleSmall: TextStyle(
-        color: text,
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0,
-        height: 1.4,
-      ),
-      bodyLarge: TextStyle(
-        color: text,
-        fontSize: 15,
-        fontWeight: FontWeight.w400,
-        height: 1.6,
-      ),
-      bodyMedium: TextStyle(
-        color: text,
-        fontSize: 14,
-        fontWeight: FontWeight.w400,
-        height: 1.6,
-      ),
-      bodySmall: TextStyle(
-        color: muted,
-        fontSize: 12,
-        fontWeight: FontWeight.w400,
-        height: 1.5,
-      ),
-      labelLarge: TextStyle(
-        color: text,
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-        letterSpacing: 0,
-      ),
-      labelMedium: TextStyle(
-        color: muted,
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-        letterSpacing: 0.2,
-      ),
-      labelSmall: TextStyle(
-        color: muted,
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
-        letterSpacing: 0.3,
-      ),
+  static material.TextTheme _textTheme(shadcn.ColorScheme colors) {
+    material.TextStyle withColor(
+      material.TextStyle style,
+      material.Color color,
+    ) {
+      return style.copyWith(color: color);
+    }
+
+    return material.TextTheme(
+      displayLarge: withColor(_typography.h1, colors.foreground),
+      displayMedium: withColor(_typography.h2, colors.foreground),
+      headlineLarge: withColor(_typography.h3, colors.foreground),
+      headlineMedium: withColor(_typography.h4, colors.foreground),
+      headlineSmall: withColor(_typography.textLarge, colors.foreground),
+      titleLarge: withColor(_typography.large, colors.foreground),
+      titleMedium: withColor(_typography.base, colors.foreground),
+      titleSmall: withColor(_typography.small, colors.foreground),
+      bodyLarge: withColor(_typography.p, colors.foreground),
+      bodyMedium: withColor(_typography.textSmall, colors.foreground),
+      bodySmall: withColor(_typography.xSmall, colors.mutedForeground),
+      labelLarge: withColor(_typography.textSmall, colors.foreground),
+      labelMedium: withColor(_typography.xSmall, colors.mutedForeground),
+      labelSmall: withColor(_typography.xSmall, colors.mutedForeground),
     );
   }
 }
 
-/// A [ThemeExtension] that makes the full palette available anywhere in the
-/// widget tree without digging through [ColorScheme].
-///
-/// Read via `Theme.of(context).extension<AppColors>()!`.
-final class AppColors extends ThemeExtension<AppColors> {
+/// Material-side palette adapter for example widgets that have not been moved
+/// to shadcn components yet.
+final class AppColors extends material.ThemeExtension<AppColors> {
   /// Creates an [AppColors] extension.
   const AppColors({
     required this.background,
@@ -344,23 +289,35 @@ final class AppColors extends ThemeExtension<AppColors> {
     required this.accent,
   });
 
-  final Color background;
-  final Color surface;
-  final Color surfaceVariant;
-  final Color border;
-  final Color text;
-  final Color textMuted;
-  final Color accent;
+  factory AppColors.fromShadcn(shadcn.ColorScheme colors) {
+    return AppColors(
+      background: colors.background,
+      surface: colors.card,
+      surfaceVariant: colors.secondary,
+      border: colors.border,
+      text: colors.foreground,
+      textMuted: colors.mutedForeground,
+      accent: colors.primary,
+    );
+  }
+
+  final material.Color background;
+  final material.Color surface;
+  final material.Color surfaceVariant;
+  final material.Color border;
+  final material.Color text;
+  final material.Color textMuted;
+  final material.Color accent;
 
   @override
   AppColors copyWith({
-    Color? background,
-    Color? surface,
-    Color? surfaceVariant,
-    Color? border,
-    Color? text,
-    Color? textMuted,
-    Color? accent,
+    material.Color? background,
+    material.Color? surface,
+    material.Color? surfaceVariant,
+    material.Color? border,
+    material.Color? text,
+    material.Color? textMuted,
+    material.Color? accent,
   }) {
     return AppColors(
       background: background ?? this.background,
@@ -377,13 +334,17 @@ final class AppColors extends ThemeExtension<AppColors> {
   AppColors lerp(AppColors? other, double t) {
     if (other == null) return this;
     return AppColors(
-      background: Color.lerp(background, other.background, t)!,
-      surface: Color.lerp(surface, other.surface, t)!,
-      surfaceVariant: Color.lerp(surfaceVariant, other.surfaceVariant, t)!,
-      border: Color.lerp(border, other.border, t)!,
-      text: Color.lerp(text, other.text, t)!,
-      textMuted: Color.lerp(textMuted, other.textMuted, t)!,
-      accent: Color.lerp(accent, other.accent, t)!,
+      background: material.Color.lerp(background, other.background, t)!,
+      surface: material.Color.lerp(surface, other.surface, t)!,
+      surfaceVariant: material.Color.lerp(
+        surfaceVariant,
+        other.surfaceVariant,
+        t,
+      )!,
+      border: material.Color.lerp(border, other.border, t)!,
+      text: material.Color.lerp(text, other.text, t)!,
+      textMuted: material.Color.lerp(textMuted, other.textMuted, t)!,
+      accent: material.Color.lerp(accent, other.accent, t)!,
     );
   }
 }

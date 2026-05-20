@@ -866,6 +866,9 @@ abstract final class BlockMarkdownCodec {
     final cells = <String>[];
     final buffer = StringBuffer();
     var escaping = false;
+    var inlineCode = false;
+    var wikiLinkDepth = 0;
+    var linkLabelDepth = 0;
 
     for (var i = 0; i < input.length; i++) {
       final char = input[i];
@@ -884,7 +887,43 @@ abstract final class BlockMarkdownCodec {
         escaping = true;
         continue;
       }
-      if (char == '|') {
+      if (char == '`') {
+        inlineCode = !inlineCode;
+        buffer.write(char);
+        continue;
+      }
+
+      if (!inlineCode && input.startsWith('[[', i)) {
+        wikiLinkDepth++;
+        buffer.write('[[');
+        i++;
+        continue;
+      }
+      if (!inlineCode && wikiLinkDepth > 0 && input.startsWith(']]', i)) {
+        wikiLinkDepth--;
+        buffer.write(']]');
+        i++;
+        continue;
+      }
+
+      if (!inlineCode && wikiLinkDepth == 0 && char == '[') {
+        linkLabelDepth++;
+        buffer.write(char);
+        continue;
+      }
+      if (!inlineCode &&
+          wikiLinkDepth == 0 &&
+          linkLabelDepth > 0 &&
+          char == ']') {
+        linkLabelDepth--;
+        buffer.write(char);
+        continue;
+      }
+
+      if (char == '|' &&
+          !inlineCode &&
+          wikiLinkDepth == 0 &&
+          linkLabelDepth == 0) {
         cells.add(buffer.toString());
         buffer.clear();
         continue;

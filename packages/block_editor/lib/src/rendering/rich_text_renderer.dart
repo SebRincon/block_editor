@@ -65,7 +65,12 @@ class RichTextRenderer extends StatelessWidget {
     final effectiveBase = resolveBlockEditorTextStyle(context, baseStyle);
     final textDirection = Directionality.of(context);
     final textScaler = MediaQuery.textScalerOf(context);
-    final spans = _buildSpans(variables, editorTheme, markdownTheme);
+    final spans = _buildSpans(
+      variables,
+      editorTheme,
+      markdownTheme,
+      effectiveBase,
+    );
     final textSpan = TextSpan(style: effectiveBase, children: spans);
     final textWidget = Text.rich(
       textSpan,
@@ -120,6 +125,7 @@ class RichTextRenderer extends StatelessWidget {
     Map<String, String> variables,
     BlockEditorThemeData editorTheme,
     MarkdownDocumentThemeData markdownTheme,
+    TextStyle baseStyle,
   ) {
     final spans = <TextSpan>[];
     var offset = 0;
@@ -177,7 +183,13 @@ class RichTextRenderer extends StatelessWidget {
       if (composingRange != null &&
           _overlaps(opStart, opEnd, composingRange!)) {
         spans.addAll(
-          _buildSpansWithComposing(op, opStart, opEnd, markdownTheme),
+          _buildSpansWithComposing(
+            op,
+            opStart,
+            opEnd,
+            markdownTheme,
+            baseStyle,
+          ),
         );
       } else if (selRange != null &&
           _overlaps(
@@ -194,10 +206,11 @@ class RichTextRenderer extends StatelessWidget {
             selRange.$2,
             editorTheme,
             markdownTheme,
+            baseStyle,
           ),
         );
       } else {
-        spans.add(_buildSpan(op, opStart, opEnd, markdownTheme));
+        spans.add(_buildSpan(op, opStart, opEnd, markdownTheme, baseStyle));
       }
       offset = opEnd;
     }
@@ -239,6 +252,7 @@ class RichTextRenderer extends StatelessWidget {
     int selEnd,
     BlockEditorThemeData editorTheme,
     MarkdownDocumentThemeData markdownTheme,
+    TextStyle baseStyle,
   ) {
     final result = <TextSpan>[];
     final clipStart = selStart.clamp(opStart, opEnd);
@@ -253,6 +267,7 @@ class RichTextRenderer extends StatelessWidget {
           opStart,
           clipStart,
           markdownTheme,
+          baseStyle,
         ),
       );
     }
@@ -261,7 +276,7 @@ class RichTextRenderer extends StatelessWidget {
         op.text.substring(clipStart - opStart, clipEnd - opStart),
         attributes: op.attributes,
       );
-      var style = _spanStyle(selected, markdownTheme);
+      var style = _spanStyle(selected, markdownTheme, baseStyle);
       style = style.copyWith(
         backgroundColor: selectionColor ?? editorTheme.selection,
       );
@@ -277,19 +292,24 @@ class RichTextRenderer extends StatelessWidget {
           clipEnd,
           opEnd,
           markdownTheme,
+          baseStyle,
         ),
       );
     }
     return result;
   }
 
-  TextStyle _spanStyle(TextOp op, MarkdownDocumentThemeData markdownTheme) {
+  TextStyle _spanStyle(
+    TextOp op,
+    MarkdownDocumentThemeData markdownTheme,
+    TextStyle baseStyle,
+  ) {
     final attrs = op.attributes;
     final isCode = attrs.inlineCode ?? false;
     final isLink = attrs.link != null;
     final isWikiLink = attrs.wikiLink != null;
     final isFootnote = attrs.footnote != null;
-    return TextStyle(
+    final style = TextStyle(
       fontWeight: (attrs.bold ?? false) ? FontWeight.bold : null,
       fontStyle: (attrs.italic ?? false) ? FontStyle.italic : null,
       decoration: _buildDecoration(attrs),
@@ -305,6 +325,12 @@ class RichTextRenderer extends StatelessWidget {
         markdownTheme: markdownTheme,
       ),
     );
+    if (!isFootnote) return style;
+    return buildFootnoteMarkerStyle(
+      baseStyle,
+      markdownTheme,
+      backgroundColor: style.backgroundColor,
+    ).merge(style);
   }
 
   bool _overlaps(int opStart, int opEnd, TextRange range) =>
@@ -315,6 +341,7 @@ class RichTextRenderer extends StatelessWidget {
     int opStart,
     int opEnd,
     MarkdownDocumentThemeData markdownTheme,
+    TextStyle baseStyle,
   ) {
     final range = composingRange!;
     final compStart = range.start.clamp(opStart, opEnd);
@@ -330,6 +357,7 @@ class RichTextRenderer extends StatelessWidget {
           opStart,
           compStart,
           markdownTheme,
+          baseStyle,
         ),
       );
     }
@@ -343,6 +371,7 @@ class RichTextRenderer extends StatelessWidget {
           compStart,
           compEnd,
           markdownTheme,
+          baseStyle,
         ),
       );
     }
@@ -356,6 +385,7 @@ class RichTextRenderer extends StatelessWidget {
           compEnd,
           opEnd,
           markdownTheme,
+          baseStyle,
         ),
       );
     }
@@ -367,6 +397,7 @@ class RichTextRenderer extends StatelessWidget {
     int start,
     int end,
     MarkdownDocumentThemeData markdownTheme,
+    TextStyle baseStyle,
   ) {
     final attrs = op.attributes;
     final isCode = attrs.inlineCode ?? false;
@@ -394,7 +425,15 @@ class RichTextRenderer extends StatelessWidget {
         markdownTheme: markdownTheme,
       ),
     );
-    return TextSpan(text: op.text, style: style);
+    if (!isFootnote) return TextSpan(text: op.text, style: style);
+    return TextSpan(
+      text: op.text,
+      style: buildFootnoteMarkerStyle(
+        baseStyle,
+        markdownTheme,
+        backgroundColor: style.backgroundColor,
+      ).merge(style),
+    );
   }
 
   TextSpan _buildSpan(
@@ -402,6 +441,7 @@ class RichTextRenderer extends StatelessWidget {
     int start,
     int end,
     MarkdownDocumentThemeData markdownTheme,
+    TextStyle baseStyle,
   ) {
     final attrs = op.attributes;
     final isCode = attrs.inlineCode ?? false;
@@ -424,7 +464,15 @@ class RichTextRenderer extends StatelessWidget {
         markdownTheme: markdownTheme,
       ),
     );
-    return TextSpan(text: op.text, style: style);
+    if (!isFootnote) return TextSpan(text: op.text, style: style);
+    return TextSpan(
+      text: op.text,
+      style: buildFootnoteMarkerStyle(
+        baseStyle,
+        markdownTheme,
+        backgroundColor: style.backgroundColor,
+      ).merge(style),
+    );
   }
 
   TextDecoration? _buildDecoration(InlineAttributes attrs) {

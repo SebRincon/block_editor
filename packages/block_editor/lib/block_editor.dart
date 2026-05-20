@@ -28,6 +28,7 @@ export 'src/rendering/block_renderer.dart';
 export 'src/rendering/block_cursor.dart';
 export 'src/rendering/block_selection_overlay.dart';
 export 'src/rendering/block_editor_widget.dart';
+export 'src/rendering/source_editing_config.dart';
 export 'src/editing/editor_editing_operations.dart';
 export 'src/rendering/block_drag_handle.dart';
 export 'src/rendering/block_editor_scope.dart';

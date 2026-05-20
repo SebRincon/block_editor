@@ -9,10 +9,13 @@ Widget wrap(Widget child) {
 BlockNode calloutNode({
   String variant = 'info',
   String text = 'This is a callout',
+  String? title,
 }) {
+  final attributes = {'variant': variant};
+  if (title != null) attributes['title'] = title;
   return BlockNode(
     type: BlockTypes.callout,
-    attributes: {'variant': variant},
+    attributes: attributes,
     delta: TextDelta.fromPlainText(text),
   );
 }
@@ -66,6 +69,67 @@ void main() {
         ),
       );
       expect(find.text('Watch out!', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('title field emits CalloutTitleChangedEvent', (tester) async {
+      BlockEvent? received;
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 400,
+            child: BlockEditorScope(
+              child: Builder(
+                builder: (context) {
+                  return CalloutBlock().build(
+                    calloutNode(title: 'Initial title'),
+                    EditorSelection.none,
+                    (event) => received = event,
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Initial title'),
+        'Updated title',
+      );
+      await tester.pump();
+
+      expect(received, isA<CalloutTitleChangedEvent>());
+      expect((received as CalloutTitleChangedEvent).title, 'Updated title');
+    });
+
+    testWidgets('icon menu emits CalloutVariantChangedEvent', (tester) async {
+      BlockEvent? received;
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 400,
+            child: BlockEditorScope(
+              child: Builder(
+                builder: (context) {
+                  return CalloutBlock().build(
+                    calloutNode(variant: 'info'),
+                    EditorSelection.none,
+                    (event) => received = event,
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Callout style'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Warning').last);
+      await tester.pump();
+
+      expect(received, isA<CalloutVariantChangedEvent>());
+      expect((received as CalloutVariantChangedEvent).variant, 'warning');
     });
 
     testWidgets('info variant uses default info color', (tester) async {

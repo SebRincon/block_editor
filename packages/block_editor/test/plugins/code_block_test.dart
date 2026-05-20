@@ -17,6 +17,13 @@ BlockNode codeNode({String code = 'print("hello")', String language = 'dart'}) {
   );
 }
 
+Iterable<TextSpan> flattenTextSpan(TextSpan span) sync* {
+  yield span;
+  for (final child in span.children ?? const <InlineSpan>[]) {
+    if (child is TextSpan) yield* flattenTextSpan(child);
+  }
+}
+
 void main() {
   group('CodeBlock — plugin contract', () {
     test('blockType is code', () {
@@ -86,6 +93,84 @@ void main() {
         ),
       );
       expect(find.widgetWithText(TextField, 'void main() {}'), findsOneWidget);
+    });
+
+    testWidgets('renders grammar-highlighted code while editing', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          BlockEditorScope(
+            child: Builder(
+              builder: (context) {
+                return CodeBlock().build(
+                  codeNode(code: 'final answer = 42;', language: 'dart'),
+                  EditorSelection.none,
+                  (_) {},
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      final highlightedText = tester.widget<Text>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              widget.textSpan?.toPlainText() == 'final answer = 42;',
+        ),
+      );
+      final spans = flattenTextSpan(highlightedText.textSpan! as TextSpan);
+
+      expect(
+        spans.any((span) => span.text == 'final' && span.style?.color != null),
+        isTrue,
+      );
+      expect(
+        spans.any((span) => span.text == '42' && span.style?.color != null),
+        isTrue,
+      );
+    });
+
+    testWidgets('uses host-provided source highlighter', (tester) async {
+      BlockSourceHighlightRequest? receivedRequest;
+      await tester.pumpWidget(
+        wrap(
+          BlockEditorScope(
+            sourceEditingConfig: BlockSourceEditingConfig(
+              highlighter: (request) {
+                receivedRequest = request;
+                return TextSpan(
+                  text: request.source,
+                  style: request.baseStyle.copyWith(color: Colors.pink),
+                );
+              },
+            ),
+            child: Builder(
+              builder: (context) {
+                return CodeBlock().build(
+                  codeNode(code: 'final answer = 42;', language: 'dart'),
+                  EditorSelection.none,
+                  (_) {},
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      expect(receivedRequest?.language, 'dart');
+      expect(receivedRequest?.source, 'final answer = 42;');
+
+      final highlightedText = tester.widget<Text>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              widget.textSpan?.toPlainText() == 'final answer = 42;',
+        ),
+      );
+      expect((highlightedText.textSpan! as TextSpan).style?.color, Colors.pink);
     });
 
     testWidgets('emits CodeBlockChangedEvent when edited', (tester) async {

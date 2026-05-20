@@ -1,7 +1,38 @@
 library;
 
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
 import 'package:flutter/material.dart';
 import 'package:block_editor/block_editor.dart';
+
+import '../../rendering/embedded_text_editing_shortcuts.dart';
+import '../../rendering/source_syntax_highlighter.dart';
+
+InputDecoration _embeddedCodeInputDecoration() {
+  return const InputDecoration(
+    isDense: true,
+    filled: false,
+    fillColor: Colors.transparent,
+    hoverColor: Colors.transparent,
+    border: InputBorder.none,
+    enabledBorder: InputBorder.none,
+    focusedBorder: InputBorder.none,
+    disabledBorder: InputBorder.none,
+    errorBorder: InputBorder.none,
+    focusedErrorBorder: InputBorder.none,
+    contentPadding: EdgeInsets.zero,
+  );
+}
+
+TextSelectionThemeData _embeddedCodeSelectionTheme(
+  BlockEditorThemeData editorTheme,
+) {
+  return TextSelectionThemeData(
+    cursorColor: editorTheme.cursor,
+    selectionColor: editorTheme.selection,
+    selectionHandleColor: editorTheme.cursor,
+  );
+}
 
 /// [BlockPlugin] for [BlockTypes.code].
 ///
@@ -79,7 +110,10 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: _codeForNode(widget.node));
-    _focusNode = FocusNode();
+    _focusNode = FocusNode(
+      onKeyEvent: (_, event) =>
+          handleEmbeddedTextEditingShortcut(_controller, event),
+    );
     _focusNode.addListener(_handleFocusChanged);
   }
 
@@ -138,19 +172,45 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
     final readOnly = scope?.readOnly ?? false;
     final editorTheme = BlockEditorThemeData.fromContext(context);
     final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
-    final fontSize = config?.fontSize ?? 14.0;
-    final fontFamily = config?.fontFamily ?? 'JetBrainsMono';
+    final configuredSourceStyle = scope?.sourceEditingConfig?.textStyle;
+    final fontSize =
+        configuredSourceStyle?.fontSize ?? config?.fontSize ?? 13.0;
+    final fontFamily =
+        configuredSourceStyle?.fontFamily ??
+        config?.fontFamily ??
+        'Cascadia Mono';
     final fontFamilyFallback =
-        config?.fontFamilyFallback ?? const ['MesloLGS NF', 'monospace'];
+        configuredSourceStyle?.fontFamilyFallback ??
+        config?.fontFamilyFallback ??
+        const [
+          'JetBrains Mono',
+          'Fira Code',
+          'MesloLGS NF',
+          'Monaco',
+          'monospace',
+        ];
     final showLineNumbers = config?.showLineNumbers ?? true;
     final showLanguageSelector = config?.showLanguageSelector ?? true;
-    final textStyle = TextStyle(
+    final textStyle = (configuredSourceStyle ?? const TextStyle()).copyWith(
       fontFamily: fontFamily,
       fontFamilyFallback: fontFamilyFallback,
       fontSize: fontSize,
-      color: markdownTheme.codeBlockForeground,
-      height: 1.5,
+      color: configuredSourceStyle?.color ?? markdownTheme.codeBlockForeground,
+      height: configuredSourceStyle?.height ?? 1.45,
       letterSpacing: 0,
+    );
+    final highlightedCode = buildHighlightedCodeSpan(
+      _code,
+      context: context,
+      blockId: widget.node.id,
+      language: _language,
+      baseStyle: textStyle,
+      editorTheme: editorTheme,
+      markdownTheme: markdownTheme,
+    );
+    final transparentTextStyle = textStyle.copyWith(
+      color: Colors.transparent,
+      decorationColor: Colors.transparent,
     );
 
     return DecoratedBox(
@@ -192,26 +252,41 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
                       ),
                     Expanded(
                       child: readOnly
-                          ? SelectableText(_code, style: textStyle)
+                          ? SelectableText.rich(highlightedCode)
                           : Material(
                               color: Colors.transparent,
-                              child: TextField(
-                                controller: _controller,
-                                focusNode: _focusNode,
-                                minLines: _lineCount,
-                                maxLines: null,
-                                keyboardType: TextInputType.multiline,
-                                textInputAction: TextInputAction.newline,
-                                style: textStyle,
-                                cursorColor: editorTheme.cursor,
-                                decoration: const InputDecoration(
-                                  isDense: true,
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  contentPadding: EdgeInsets.zero,
-                                ),
-                                onChanged: _handleChanged,
+                              child: Stack(
+                                alignment: AlignmentDirectional.topStart,
+                                children: [
+                                  IgnorePointer(
+                                    child: Text.rich(
+                                      highlightedCode,
+                                      textHeightBehavior:
+                                          const TextHeightBehavior(
+                                            applyHeightToFirstAscent: false,
+                                            applyHeightToLastDescent: false,
+                                          ),
+                                    ),
+                                  ),
+                                  TextSelectionTheme(
+                                    data: _embeddedCodeSelectionTheme(
+                                      editorTheme,
+                                    ),
+                                    child: TextField(
+                                      controller: _controller,
+                                      focusNode: _focusNode,
+                                      minLines: _lineCount,
+                                      maxLines: null,
+                                      keyboardType: TextInputType.multiline,
+                                      textInputAction: TextInputAction.newline,
+                                      style: transparentTextStyle,
+                                      cursorColor: editorTheme.cursor,
+                                      decoration:
+                                          _embeddedCodeInputDecoration(),
+                                      onChanged: _handleChanged,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                     ),
@@ -263,6 +338,44 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
           ],
         ),
       ),
+    );
+  }
+
+  @visibleForTesting
+  TextSpan buildHighlightedCodeSpan(
+    String code, {
+    required BuildContext context,
+    required String blockId,
+    required String language,
+    required TextStyle baseStyle,
+    required BlockEditorThemeData editorTheme,
+    required MarkdownDocumentThemeData markdownTheme,
+  }) {
+    final highlighter = BlockEditorScope.maybeOf(
+      context,
+    )?.sourceEditingConfig?.highlighter;
+    if (highlighter != null) {
+      try {
+        return highlighter(
+          BlockSourceHighlightRequest(
+            blockId: blockId,
+            source: code,
+            language: language,
+            baseStyle: baseStyle,
+            editorTheme: editorTheme,
+            markdownTheme: markdownTheme,
+          ),
+        );
+      } catch (_) {
+        // Syntax highlighting should never break editing.
+      }
+    }
+    return buildHighlightedSourceSpan(
+      code,
+      language: language,
+      baseStyle: baseStyle,
+      editorTheme: editorTheme,
+      markdownTheme: markdownTheme,
     );
   }
 }

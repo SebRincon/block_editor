@@ -179,6 +179,62 @@ void main() {
       expect(editor.variables['authorName'], equals('Stanly Silas'));
       expect(editor.variables['packageName'], equals('block_editor'));
     });
+
+    testWidgets('starter document covers broad editable block variants', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(EditorSection(themeMode: ThemeMode.light, onToggleTheme: () {})),
+      );
+      await tester.pump();
+
+      final editor = tester.widget<BlockEditorWidget>(
+        find.byType(BlockEditorWidget),
+      );
+      final blocks = editor.controller.document.flatten().toList();
+      final types = blocks.map((block) => block.type).toSet();
+
+      expect(
+        types,
+        containsAll(<String>[
+          BlockTypes.heading1,
+          BlockTypes.heading2,
+          BlockTypes.heading3,
+          BlockTypes.heading4,
+          BlockTypes.heading5,
+          BlockTypes.heading6,
+          BlockTypes.paragraph,
+          BlockTypes.bulletList,
+          BlockTypes.numberedList,
+          BlockTypes.todo,
+          BlockTypes.quote,
+          BlockTypes.callout,
+          BlockTypes.table,
+          BlockTypes.code,
+          BlockTypes.math,
+          BlockTypes.mermaid,
+          BlockTypes.rawMarkdown,
+          BlockTypes.image,
+          BlockTypes.link,
+          BlockTypes.video,
+          BlockTypes.youtube,
+          BlockTypes.file,
+          BlockTypes.divider,
+        ]),
+      );
+      expect(
+        blocks.where((block) => block.type == BlockTypes.table).length,
+        greaterThanOrEqualTo(5),
+      );
+      expect(
+        blocks.where((block) => block.type == BlockTypes.callout).length,
+        greaterThanOrEqualTo(8),
+      );
+      expect(
+        blocks.where((block) => block.type == BlockTypes.code).length,
+        greaterThanOrEqualTo(6),
+      );
+    });
   });
 
   group('EditorSection full app integration', () {

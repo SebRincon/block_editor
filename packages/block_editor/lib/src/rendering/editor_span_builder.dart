@@ -23,6 +23,25 @@ TextStyle resolveBlockEditorTextStyle(
   ).style.merge(baseStyle ?? const TextStyle(fontSize: 16));
 }
 
+/// Style used for inline footnote markers in both rendering and measurement.
+TextStyle buildFootnoteMarkerStyle(
+  TextStyle baseStyle,
+  MarkdownDocumentThemeData markdownTheme, {
+  Color? backgroundColor,
+}) {
+  final fontSize =
+      (baseStyle.fontSize ?? markdownTheme.paragraphStyle.fontSize ?? 16) *
+      0.72;
+  return baseStyle.copyWith(
+    color: markdownTheme.footnoteColor,
+    backgroundColor: backgroundColor ?? markdownTheme.footnoteBackground,
+    fontSize: fontSize,
+    height: 1,
+    fontWeight: FontWeight.w600,
+    fontFeatures: const [FontFeature.superscripts()],
+  );
+}
+
 /// Builds a [TextSpan] tree from [delta] that matches [RichTextRenderer]
 /// output exactly — applying per-op inline attributes and resolving
 /// [VariableOp] and [TagOp] to their rendered text.
@@ -55,52 +74,53 @@ TextSpan buildMeasurementSpan(
       final isEmbed = isWikiLink && attrs.embed == true;
       final isFootnote = attrs.footnote != null && attrs.footnote!.isNotEmpty;
       final styleBase = isCode ? markdownTheme.inlineCodeStyle : baseStyle;
-      children.add(
-        TextSpan(
-          text: op.text,
-          style: styleBase.copyWith(
-            fontWeight: attrs.bold == true
-                ? FontWeight.bold
-                : attrs.bold == false
-                ? FontWeight.normal
-                : null,
-            fontStyle: attrs.italic == true
-                ? FontStyle.italic
-                : attrs.italic == false
-                ? FontStyle.normal
-                : null,
-            decoration: TextDecoration.combine([
-              if (attrs.underline ?? false) TextDecoration.underline,
-              if (attrs.strikethrough ?? false) TextDecoration.lineThrough,
-            ]),
-            fontFamily: (attrs.inlineCode ?? false)
-                ? markdownTheme.inlineCodeStyle.fontFamily ?? 'monospace'
-                : baseStyle.fontFamily,
-            color: isLink
-                ? markdownTheme.linkColor
-                : isWikiLink
-                ? markdownTheme.wikiLinkColor
-                : isFootnote
-                ? markdownTheme.footnoteColor
-                : isCode
-                ? markdownTheme.inlineCodeForeground
-                : attrs.highlight == true
-                ? markdownTheme.highlightForeground
-                : color,
-            backgroundColor: isCode
-                ? markdownTheme.inlineCodeBackground
-                : attrs.highlight == true
-                ? markdownTheme.highlightBackground
-                : isEmbed
-                ? markdownTheme.embedBackground
-                : isWikiLink
-                ? markdownTheme.wikiLinkBackground
-                : isFootnote
-                ? markdownTheme.footnoteBackground
-                : bgColor,
-          ),
-        ),
-      );
+      final backgroundColor = isCode
+          ? markdownTheme.inlineCodeBackground
+          : attrs.highlight == true
+          ? markdownTheme.highlightBackground
+          : isEmbed
+          ? markdownTheme.embedBackground
+          : isWikiLink
+          ? markdownTheme.wikiLinkBackground
+          : isFootnote
+          ? markdownTheme.footnoteBackground
+          : bgColor;
+      final style = isFootnote
+          ? buildFootnoteMarkerStyle(
+              styleBase,
+              markdownTheme,
+              backgroundColor: backgroundColor,
+            )
+          : styleBase.copyWith(
+              fontWeight: attrs.bold == true
+                  ? FontWeight.bold
+                  : attrs.bold == false
+                  ? FontWeight.normal
+                  : null,
+              fontStyle: attrs.italic == true
+                  ? FontStyle.italic
+                  : attrs.italic == false
+                  ? FontStyle.normal
+                  : null,
+              decoration: TextDecoration.combine([
+                if (attrs.underline ?? false) TextDecoration.underline,
+                if (attrs.strikethrough ?? false) TextDecoration.lineThrough,
+              ]),
+              fontFamily: (attrs.inlineCode ?? false)
+                  ? markdownTheme.inlineCodeStyle.fontFamily ?? 'monospace'
+                  : baseStyle.fontFamily,
+              color: isLink
+                  ? markdownTheme.linkColor
+                  : isWikiLink
+                  ? markdownTheme.wikiLinkColor
+                  : isCode
+                  ? markdownTheme.inlineCodeForeground
+                  : attrs.highlight == true
+                  ? markdownTheme.highlightForeground
+                  : color,
+              backgroundColor: backgroundColor,
+            );
+      children.add(TextSpan(text: op.text, style: style));
     } else if (op is VariableOp) {
       final resolved = variables[op.variableName] ?? '{{${op.variableName}}}';
       children.add(

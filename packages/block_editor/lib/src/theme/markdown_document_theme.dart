@@ -21,6 +21,11 @@ final class MarkdownDocumentThemeData {
     required this.heading5Style,
     required this.heading6Style,
     required this.listMarkerStyle,
+    required this.listIndentWidth,
+    required this.listMarkerWidth,
+    required this.bulletListMarkerVerticalOffset,
+    required this.numberedListMarkerVerticalOffset,
+    required this.todoMarkerVerticalOffset,
     required this.quoteStyle,
     required this.quoteBorder,
     required this.inlineCodeStyle,
@@ -62,6 +67,11 @@ final class MarkdownDocumentThemeData {
   final material.TextStyle heading5Style;
   final material.TextStyle heading6Style;
   final material.TextStyle listMarkerStyle;
+  final double listIndentWidth;
+  final double listMarkerWidth;
+  final double bulletListMarkerVerticalOffset;
+  final double numberedListMarkerVerticalOffset;
+  final double todoMarkerVerticalOffset;
   final material.TextStyle quoteStyle;
   final material.Color quoteBorder;
   final material.TextStyle inlineCodeStyle;
@@ -93,12 +103,36 @@ final class MarkdownDocumentThemeData {
   final MarkdownCalloutTone neutralCallout;
 
   factory MarkdownDocumentThemeData.fromContext(material.BuildContext context) {
+    final inherited = MarkdownDocumentTheme.maybeOf(context);
+    if (inherited != null) return inherited;
+
+    return MarkdownDocumentThemeData.defaults(context);
+  }
+
+  /// Resolves the default Markdown document tokens from the shared editor theme.
+  factory MarkdownDocumentThemeData.defaults(material.BuildContext context) {
     final editor = BlockEditorThemeData.fromContext(context);
     final inherited = material.DefaultTextStyle.of(context).style;
     final foreground = editor.foreground;
     final mutedForeground = editor.mutedForeground;
     final bodyFamily = inherited.fontFamily;
     final codeFamily = 'JetBrainsMono';
+    final tableHeaderSurface = material.Color.alphaBlend(
+      foreground.withValues(alpha: 0.035),
+      editor.background,
+    );
+    final codeSurface = material.Color.alphaBlend(
+      foreground.withValues(alpha: 0.045),
+      editor.background,
+    );
+    final activeCellSurface = material.Color.alphaBlend(
+      foreground.withValues(alpha: 0.055),
+      editor.background,
+    );
+    final footnoteSurface = material.Color.alphaBlend(
+      foreground.withValues(alpha: 0.065),
+      editor.background,
+    );
 
     final paragraph = inherited.merge(
       editor.paragraphStyle.copyWith(
@@ -168,6 +202,11 @@ final class MarkdownDocumentThemeData {
         color: mutedForeground,
       ),
       listMarkerStyle: paragraph.copyWith(color: mutedForeground),
+      listIndentWidth: 28,
+      listMarkerWidth: 28,
+      bulletListMarkerVerticalOffset: -1.5,
+      numberedListMarkerVerticalOffset: -2.0,
+      todoMarkerVerticalOffset: 2,
       quoteStyle: paragraph.copyWith(
         color: mutedForeground,
         fontStyle: material.FontStyle.italic,
@@ -183,9 +222,9 @@ final class MarkdownDocumentThemeData {
       highlightBackground: warning.withValues(alpha: 0.22),
       highlightForeground: foreground,
       footnoteColor: mutedForeground,
-      footnoteBackground: editor.muted.withValues(alpha: 0.70),
-      tableBorder: editor.border.withValues(alpha: 0.82),
-      tableHeaderBackground: editor.muted.withValues(alpha: 0.48),
+      footnoteBackground: footnoteSurface,
+      tableBorder: editor.border.withValues(alpha: 0.76),
+      tableHeaderBackground: tableHeaderSurface,
       tableCellStyle: paragraph.copyWith(fontSize: 14.5, height: 1.42),
       tableHeaderStyle: paragraph.copyWith(
         fontSize: 13.5,
@@ -193,9 +232,9 @@ final class MarkdownDocumentThemeData {
         fontWeight: material.FontWeight.w700,
         color: foreground,
       ),
-      tableActiveCellBackground: editor.accent.withValues(alpha: 0.10),
-      codeBlockBackground: editor.muted.withValues(alpha: 0.40),
-      codeBlockBorder: editor.border.withValues(alpha: 0.86),
+      tableActiveCellBackground: activeCellSurface,
+      codeBlockBackground: codeSurface,
+      codeBlockBorder: editor.border.withValues(alpha: 0.78),
       codeBlockForeground: foreground,
       codeBlockMutedForeground: mutedForeground,
       calloutTextStyle: paragraph.copyWith(fontSize: 15.5, height: 1.5),
@@ -209,6 +248,108 @@ final class MarkdownDocumentThemeData {
       errorCallout: _tone(editor.destructive, editor.background),
       successCallout: _tone(success, editor.background),
       neutralCallout: _tone(mutedForeground, editor.background),
+    );
+  }
+
+  /// Returns a copy with selected Markdown document tokens replaced.
+  MarkdownDocumentThemeData copyWith({
+    double? maxContentWidth,
+    material.EdgeInsets? pagePadding,
+    material.TextStyle? paragraphStyle,
+    material.TextStyle? heading1Style,
+    material.TextStyle? heading2Style,
+    material.TextStyle? heading3Style,
+    material.TextStyle? heading4Style,
+    material.TextStyle? heading5Style,
+    material.TextStyle? heading6Style,
+    material.TextStyle? listMarkerStyle,
+    double? listIndentWidth,
+    double? listMarkerWidth,
+    double? bulletListMarkerVerticalOffset,
+    double? numberedListMarkerVerticalOffset,
+    double? todoMarkerVerticalOffset,
+    material.TextStyle? quoteStyle,
+    material.Color? quoteBorder,
+    material.TextStyle? inlineCodeStyle,
+    material.Color? inlineCodeBackground,
+    material.Color? inlineCodeForeground,
+    material.Color? linkColor,
+    material.Color? wikiLinkColor,
+    material.Color? wikiLinkBackground,
+    material.Color? embedBackground,
+    material.Color? highlightBackground,
+    material.Color? highlightForeground,
+    material.Color? footnoteColor,
+    material.Color? footnoteBackground,
+    material.Color? tableBorder,
+    material.Color? tableHeaderBackground,
+    material.TextStyle? tableCellStyle,
+    material.TextStyle? tableHeaderStyle,
+    material.Color? tableActiveCellBackground,
+    material.Color? codeBlockBackground,
+    material.Color? codeBlockBorder,
+    material.Color? codeBlockForeground,
+    material.Color? codeBlockMutedForeground,
+    material.TextStyle? calloutTextStyle,
+    material.TextStyle? calloutTitleStyle,
+    MarkdownCalloutTone? infoCallout,
+    MarkdownCalloutTone? warningCallout,
+    MarkdownCalloutTone? errorCallout,
+    MarkdownCalloutTone? successCallout,
+    MarkdownCalloutTone? neutralCallout,
+  }) {
+    return MarkdownDocumentThemeData(
+      maxContentWidth: maxContentWidth ?? this.maxContentWidth,
+      pagePadding: pagePadding ?? this.pagePadding,
+      paragraphStyle: paragraphStyle ?? this.paragraphStyle,
+      heading1Style: heading1Style ?? this.heading1Style,
+      heading2Style: heading2Style ?? this.heading2Style,
+      heading3Style: heading3Style ?? this.heading3Style,
+      heading4Style: heading4Style ?? this.heading4Style,
+      heading5Style: heading5Style ?? this.heading5Style,
+      heading6Style: heading6Style ?? this.heading6Style,
+      listMarkerStyle: listMarkerStyle ?? this.listMarkerStyle,
+      listIndentWidth: listIndentWidth ?? this.listIndentWidth,
+      listMarkerWidth: listMarkerWidth ?? this.listMarkerWidth,
+      bulletListMarkerVerticalOffset:
+          bulletListMarkerVerticalOffset ?? this.bulletListMarkerVerticalOffset,
+      numberedListMarkerVerticalOffset:
+          numberedListMarkerVerticalOffset ??
+          this.numberedListMarkerVerticalOffset,
+      todoMarkerVerticalOffset:
+          todoMarkerVerticalOffset ?? this.todoMarkerVerticalOffset,
+      quoteStyle: quoteStyle ?? this.quoteStyle,
+      quoteBorder: quoteBorder ?? this.quoteBorder,
+      inlineCodeStyle: inlineCodeStyle ?? this.inlineCodeStyle,
+      inlineCodeBackground: inlineCodeBackground ?? this.inlineCodeBackground,
+      inlineCodeForeground: inlineCodeForeground ?? this.inlineCodeForeground,
+      linkColor: linkColor ?? this.linkColor,
+      wikiLinkColor: wikiLinkColor ?? this.wikiLinkColor,
+      wikiLinkBackground: wikiLinkBackground ?? this.wikiLinkBackground,
+      embedBackground: embedBackground ?? this.embedBackground,
+      highlightBackground: highlightBackground ?? this.highlightBackground,
+      highlightForeground: highlightForeground ?? this.highlightForeground,
+      footnoteColor: footnoteColor ?? this.footnoteColor,
+      footnoteBackground: footnoteBackground ?? this.footnoteBackground,
+      tableBorder: tableBorder ?? this.tableBorder,
+      tableHeaderBackground:
+          tableHeaderBackground ?? this.tableHeaderBackground,
+      tableCellStyle: tableCellStyle ?? this.tableCellStyle,
+      tableHeaderStyle: tableHeaderStyle ?? this.tableHeaderStyle,
+      tableActiveCellBackground:
+          tableActiveCellBackground ?? this.tableActiveCellBackground,
+      codeBlockBackground: codeBlockBackground ?? this.codeBlockBackground,
+      codeBlockBorder: codeBlockBorder ?? this.codeBlockBorder,
+      codeBlockForeground: codeBlockForeground ?? this.codeBlockForeground,
+      codeBlockMutedForeground:
+          codeBlockMutedForeground ?? this.codeBlockMutedForeground,
+      calloutTextStyle: calloutTextStyle ?? this.calloutTextStyle,
+      calloutTitleStyle: calloutTitleStyle ?? this.calloutTitleStyle,
+      infoCallout: infoCallout ?? this.infoCallout,
+      warningCallout: warningCallout ?? this.warningCallout,
+      errorCallout: errorCallout ?? this.errorCallout,
+      successCallout: successCallout ?? this.successCallout,
+      neutralCallout: neutralCallout ?? this.neutralCallout,
     );
   }
 
@@ -261,6 +402,36 @@ final class MarkdownDocumentThemeData {
       border: accent.withValues(alpha: 0.58),
       iconBackground: accent.withValues(alpha: 0.14),
     );
+  }
+}
+
+/// Overrides Markdown document rendering tokens for a subtree.
+class MarkdownDocumentTheme extends material.InheritedWidget {
+  /// Creates a Markdown document theme override.
+  const MarkdownDocumentTheme({
+    super.key,
+    required this.data,
+    required super.child,
+  });
+
+  /// The Markdown document tokens exposed to descendant block widgets.
+  final MarkdownDocumentThemeData data;
+
+  /// Returns the nearest Markdown document theme override, if any.
+  static MarkdownDocumentThemeData? maybeOf(material.BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<MarkdownDocumentTheme>()
+        ?.data;
+  }
+
+  /// Returns the nearest Markdown document theme or derived defaults.
+  static MarkdownDocumentThemeData of(material.BuildContext context) {
+    return MarkdownDocumentThemeData.fromContext(context);
+  }
+
+  @override
+  bool updateShouldNotify(MarkdownDocumentTheme oldWidget) {
+    return data != oldWidget.data;
   }
 }
 

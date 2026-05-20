@@ -311,6 +311,25 @@ private note
 | A\\|B | C |''');
     });
 
+    test('preserves table pipes inside wiki links and inline code spans', () {
+      const markdown = '''
+| Syntax | Value |
+| --- | --- |
+| Wiki | [[Target page|alias]] |
+| Code | `A | B` |
+| Link label | [A | B](https://example.com) |
+''';
+
+      final document = BlockMarkdownCodec.decode(markdown);
+      final table = document.blocks.single;
+
+      expect(table.attributes['rows'], [
+        ['Wiki', '[[Target page|alias]]'],
+        ['Code', '`A | B`'],
+        ['Link label', '[A | B](https://example.com)'],
+      ]);
+    });
+
     test('preserves nested list indentation for bullets and tasks', () {
       const markdown = '''
 - root

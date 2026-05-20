@@ -16,13 +16,13 @@ Widget wrap(Widget child) {
 
 Future<void> activateTableCell(WidgetTester tester, String text) async {
   await hoverTableCell(tester, text);
-  await tester.tap(find.widgetWithText(TextField, text));
+  await tester.tap(_tableCellFinder(text));
   await tester.pump();
   await tester.pump();
 }
 
 Future<void> hoverTableCell(WidgetTester tester, String text) async {
-  final finder = find.widgetWithText(TextField, text);
+  final finder = _tableCellFinder(text);
   await tester.sendEventToBinding(
     PointerHoverEvent(
       position: tester.getCenter(finder),
@@ -31,6 +31,31 @@ Future<void> hoverTableCell(WidgetTester tester, String text) async {
   );
   await tester.pump();
   await tester.pump();
+}
+
+Finder _tableCellFinder(String text) {
+  final field = find.widgetWithText(TextField, text);
+  if (field.evaluate().isNotEmpty) return field;
+
+  final renderable = text.replaceAll(
+    RegExp(r'<br\s*/?>', caseSensitive: false),
+    '\n',
+  );
+  final plain = BlockMarkdownCodec.parseInline(renderable).plainText;
+  final richText = find.byWidgetPredicate(
+    (widget) => widget is RichText && widget.text.toPlainText() == plain,
+  );
+  if (richText.evaluate().isNotEmpty) return richText;
+
+  return find.text(plain, findRichText: true);
+}
+
+Finder _tableCellSurfaceFinder(String tableId) {
+  return find.byWidgetPredicate((widget) {
+    final key = widget.key;
+    return key is ValueKey<String> &&
+        key.value.startsWith('block-editor-table-cell-$tableId-');
+  });
 }
 
 Future<void> hoverBlockText(WidgetTester tester, String text) async {
@@ -185,12 +210,46 @@ void main() {
         wrap(BlockEditorWidget(controller: tableController)),
       );
 
+      await activateTableCell(tester, 'Draft');
       await tester.enterText(find.widgetWithText(TextField, 'Draft'), 'Done');
       await tester.pump();
 
       expect(tableController.document.blocks.single.attributes['rows'], [
         ['Done', 'Open'],
       ]);
+    });
+
+    testWidgets('decoded markdown tables render inline styles in cells', (
+      tester,
+    ) async {
+      final tableController = BlockController(
+        document: BlockMarkdownCodec.decode('''
+| Syntax | Rendered |
+| --- | --- |
+| Bold | **bold text** |
+| Italic | *italic text* |
+| Highlight | ==highlighted text== |
+| Code | `inline code` |
+| Link | [Docs](https://example.com) |
+| Wiki | [[Target page|alias]] |
+'''),
+      );
+      addTearDown(tableController.dispose);
+      await tester.pumpWidget(
+        wrap(BlockEditorWidget(controller: tableController)),
+      );
+
+      expect(find.text('bold text', findRichText: true), findsOneWidget);
+      expect(find.text('italic text', findRichText: true), findsOneWidget);
+      expect(find.text('highlighted text', findRichText: true), findsOneWidget);
+      expect(find.text('inline code', findRichText: true), findsOneWidget);
+      expect(find.text('Docs', findRichText: true), findsOneWidget);
+      expect(find.text('alias', findRichText: true), findsOneWidget);
+      expect(find.text('**bold text**', findRichText: true), findsNothing);
+      expect(
+        find.text('==highlighted text==', findRichText: true),
+        findsNothing,
+      );
     });
 
     testWidgets('focused table cells own the active text input client', (
@@ -225,9 +284,8 @@ void main() {
       await tester.pump();
       expect(tester.testTextInput.hasAnyClients, isTrue);
 
-      await tester.tap(find.widgetWithText(TextField, 'Draft'));
-      await tester.pump();
-      tester.testTextInput.enterText('Done');
+      await activateTableCell(tester, 'Draft');
+      await tester.enterText(find.widgetWithText(TextField, 'Draft'), 'Done');
       await tester.pump();
 
       expect(tableController.document.blocks.first.delta?.plainText, 'Intro');
@@ -262,6 +320,39 @@ void main() {
         codeController.document.findById('code1')?.delta?.plainText,
         'void main() {\n  print("hi");\n}',
       );
+    });
+
+    testWidgets('code block editor opts out of ambient filled inputs', (
+      tester,
+    ) async {
+      final codeController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'code1',
+            type: BlockTypes.code,
+            attributes: {'language': 'dart'},
+            delta: TextDelta.fromPlainText('void main() {}'),
+          ),
+        ]),
+      );
+      addTearDown(codeController.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            inputDecorationTheme: const InputDecorationTheme(
+              filled: true,
+              fillColor: Colors.red,
+            ),
+          ),
+          home: Scaffold(body: BlockEditorWidget(controller: codeController)),
+        ),
+      );
+
+      final textField = tester.widget<TextField>(
+        find.widgetWithText(TextField, 'void main() {}'),
+      );
+      expect(textField.decoration?.filled, isFalse);
+      expect(textField.decoration?.fillColor, Colors.transparent);
     });
 
     testWidgets('raw Markdown block edits update the block delta', (
@@ -368,10 +459,10 @@ void main() {
       );
 
       await activateTableCell(tester, '2');
-      expect(find.byType(TextField), findsNWidgets(4));
+      expect(_tableCellSurfaceFinder('table1'), findsNWidgets(4));
       await tester.tap(find.byTooltip('Add row below'));
       await tester.pump();
-      expect(find.byType(TextField), findsNWidgets(6));
+      expect(_tableCellSurfaceFinder('table1'), findsNWidgets(6));
       expect(tableController.document.blocks.single.attributes['rows'], [
         ['1', '2'],
         ['', ''],
@@ -379,7 +470,7 @@ void main() {
 
       await tester.tap(find.byTooltip('Add column right'));
       await tester.pump();
-      expect(find.byType(TextField), findsNWidgets(9));
+      expect(_tableCellSurfaceFinder('table1'), findsNWidgets(9));
       expect(tableController.document.blocks.single.attributes['headers'], [
         'A',
         'B',
@@ -416,10 +507,10 @@ void main() {
       await activateTableCell(tester, '2');
       await tester.tap(find.byTooltip('Add row below'));
       await tester.pump();
-      expect(find.byType(TextField), findsNWidgets(6));
+      expect(_tableCellSurfaceFinder('table1'), findsNWidgets(6));
       await tester.tap(find.byTooltip('Delete row 2'));
       await tester.pump();
-      expect(find.byType(TextField), findsNWidgets(4));
+      expect(_tableCellSurfaceFinder('table1'), findsNWidgets(4));
       expect(tableController.document.blocks.single.attributes['rows'], [
         ['1', '2'],
       ]);
@@ -427,10 +518,10 @@ void main() {
       await activateTableCell(tester, '2');
       await tester.tap(find.byTooltip('Add column right'));
       await tester.pump();
-      expect(find.byType(TextField), findsNWidgets(6));
+      expect(_tableCellSurfaceFinder('table1'), findsNWidgets(6));
       await tester.tap(find.byTooltip('Delete column 3'));
       await tester.pump();
-      expect(find.byType(TextField), findsNWidgets(4));
+      expect(_tableCellSurfaceFinder('table1'), findsNWidgets(4));
       expect(tableController.document.blocks.single.attributes['headers'], [
         'A',
         'B',
@@ -502,7 +593,7 @@ void main() {
       await activateTableCell(tester, '4');
       await tester.tap(find.byTooltip('Delete row 2'));
       await tester.pump();
-      expect(find.byType(TextField), findsNWidgets(6));
+      expect(_tableCellSurfaceFinder('table1'), findsNWidgets(6));
       expect(tableController.document.blocks.single.attributes['rows'], [
         ['1', '2', '3'],
       ]);
@@ -510,7 +601,7 @@ void main() {
       await activateTableCell(tester, '2');
       await tester.tap(find.byTooltip('Delete column 2'));
       await tester.pump();
-      expect(find.byType(TextField), findsNWidgets(4));
+      expect(_tableCellSurfaceFinder('table1'), findsNWidgets(4));
       expect(tableController.document.blocks.single.attributes['headers'], [
         'A',
         'C',

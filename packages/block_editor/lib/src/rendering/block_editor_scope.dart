@@ -25,6 +25,8 @@ class BlockEditorScope extends InheritedWidget {
     required super.child,
     this.variables = const {},
     this.readOnly = false,
+    this.cursorColor,
+    this.selectionColor,
     this.onEmbeddedInputFocusChanged,
     this.imageConfig,
     this.videoConfig,
@@ -33,6 +35,7 @@ class BlockEditorScope extends InheritedWidget {
     this.codeConfig,
     this.calloutConfig,
     this.linkConfig,
+    this.sourceEditingConfig,
   });
 
   /// The variable resolution map for inline variable embeds.
@@ -43,6 +46,12 @@ class BlockEditorScope extends InheritedWidget {
 
   /// Whether the editor is in read-only viewer mode.
   final bool readOnly;
+
+  /// The effective cursor color chosen by the editor host.
+  final Color? cursorColor;
+
+  /// The effective selection highlight color chosen by the editor host.
+  final Color? selectionColor;
 
   /// Called when an embedded platform text input, such as an editable table
   /// cell, gains or loses focus.
@@ -69,6 +78,9 @@ class BlockEditorScope extends InheritedWidget {
   /// Optional configuration for link blocks.
   final LinkBlockConfig? linkConfig;
 
+  /// Optional configuration for embedded source-backed blocks.
+  final BlockSourceEditingConfig? sourceEditingConfig;
+
   /// Returns the nearest [BlockEditorScope] ancestor, or null if none exists.
   static BlockEditorScope? maybeOf(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<BlockEditorScope>();
@@ -78,6 +90,8 @@ class BlockEditorScope extends InheritedWidget {
   bool updateShouldNotify(BlockEditorScope oldWidget) {
     return variables != oldWidget.variables ||
         readOnly != oldWidget.readOnly ||
+        cursorColor != oldWidget.cursorColor ||
+        selectionColor != oldWidget.selectionColor ||
         onEmbeddedInputFocusChanged != oldWidget.onEmbeddedInputFocusChanged ||
         imageConfig != oldWidget.imageConfig ||
         videoConfig != oldWidget.videoConfig ||
@@ -85,6 +99,7 @@ class BlockEditorScope extends InheritedWidget {
         fileConfig != oldWidget.fileConfig ||
         codeConfig != oldWidget.codeConfig ||
         calloutConfig != oldWidget.calloutConfig ||
-        linkConfig != oldWidget.linkConfig;
+        linkConfig != oldWidget.linkConfig ||
+        sourceEditingConfig != oldWidget.sourceEditingConfig;
   }
 }

@@ -59,11 +59,6 @@ class _FileBlockWidget extends StatelessWidget {
   final BlockNode node;
   final void Function(BlockEvent) onEvent;
 
-  static const Color _background = Color(0xFFF5F5F5);
-  static const Color _iconColor = Color(0xFF555555);
-  static const Color _textColor = Color(0xFF222222);
-  static const Color _subtextColor = Color(0xFF888888);
-
   String get _filename =>
       node.attributes['filename'] as String? ?? 'Untitled file';
   String get _size => node.attributes['size'] as String? ?? '';
@@ -102,66 +97,79 @@ class _FileBlockWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final config = BlockEditorScope.maybeOf(context)?.fileConfig;
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
 
-    return Container(
-      padding: const EdgeInsets.all(12),
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: _background,
-        borderRadius: BorderRadius.circular(6),
+        color: markdownTheme.codeBlockBackground,
+        border: Border.all(color: markdownTheme.codeBlockBorder),
+        borderRadius: BorderRadius.circular(editorTheme.radiusMd),
       ),
-      child: Row(
-        children: [
-          const Icon(
-            IconData(0xe226, fontFamily: 'MaterialIcons'),
-            color: _iconColor,
-            size: 24,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _filename,
-                  style: const TextStyle(
-                    color: _textColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (_size.isNotEmpty)
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Icon(
+              Icons.insert_drive_file_outlined,
+              color: editorTheme.mutedForeground,
+              size: 22,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Text(
-                    _size,
-                    style: const TextStyle(color: _subtextColor, fontSize: 12),
+                    _filename,
+                    style: editorTheme.smallStyle.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-              ],
-            ),
-          ),
-          GestureDetector(
-            onTap: () => _handleDownload(context, config),
-            child: const Padding(
-              padding: EdgeInsets.all(8),
-              child: Icon(
-                IconData(0xe2c4, fontFamily: 'MaterialIcons'),
-                color: _iconColor,
-                size: 20,
+                  if (_size.isNotEmpty)
+                    Text(
+                      _size,
+                      style: editorTheme.xSmallStyle,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
               ),
             ),
-          ),
-          GestureDetector(
-            onTap: () => _handleOpen(context, config),
-            child: const Padding(
-              padding: EdgeInsets.all(8),
-              child: Icon(
-                IconData(0xe3d0, fontFamily: 'MaterialIcons'),
-                color: _iconColor,
-                size: 20,
-              ),
+            _FileIconButton(
+              icon: Icons.download_rounded,
+              onTap: () => _handleDownload(context, config),
             ),
-          ),
-        ],
+            _FileIconButton(
+              icon: Icons.open_in_new_rounded,
+              onTap: () => _handleOpen(context, config),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FileIconButton extends StatelessWidget {
+  const _FileIconButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(7),
+          child: Icon(icon, color: editorTheme.mutedForeground, size: 18),
+        ),
       ),
     );
   }

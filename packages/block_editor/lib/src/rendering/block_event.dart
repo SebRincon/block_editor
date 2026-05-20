@@ -167,6 +167,29 @@ final class RawMarkdownChangedEvent extends BlockEvent {
   final String text;
 }
 
+/// Emitted when a callout title is edited.
+final class CalloutTitleChangedEvent extends BlockEvent {
+  /// Creates a [CalloutTitleChangedEvent] for the callout identified by
+  /// [blockId].
+  const CalloutTitleChangedEvent({required super.blockId, required this.title});
+
+  /// The title stored in the callout block attributes.
+  final String title;
+}
+
+/// Emitted when a callout tone/icon variant is changed.
+final class CalloutVariantChangedEvent extends BlockEvent {
+  /// Creates a [CalloutVariantChangedEvent] for the callout identified by
+  /// [blockId].
+  const CalloutVariantChangedEvent({
+    required super.blockId,
+    required this.variant,
+  });
+
+  /// The variant stored in the callout block attributes.
+  final String variant;
+}
+
 /// Emitted when the user drags a block to a new position.
 ///
 /// [newIndex] is the target index in the root block list after the move.

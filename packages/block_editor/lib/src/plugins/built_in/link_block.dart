@@ -56,11 +56,6 @@ class _LinkBlockWidget extends StatelessWidget {
   final BlockNode node;
   final void Function(BlockEvent) onEvent;
 
-  static const Color _background = Color(0xFFF0F7FF);
-  static const Color _urlColor = Color(0xFF0070F3);
-  static const Color _labelColor = Color(0xFF222222);
-  static const Color _subtextColor = Color(0xFF888888);
-
   String get _url => node.attributes['url'] as String? ?? '';
   String get _displayText => node.attributes['displayText'] as String? ?? _url;
 
@@ -82,71 +77,79 @@ class _LinkBlockWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final config = BlockEditorScope.maybeOf(context)?.linkConfig;
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
 
     if (_url.isEmpty) {
-      return _placeholder();
+      return _placeholder(context);
     }
 
-    return GestureDetector(
-      onTap: () => _handleTap(context, config),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: _background,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: _urlColor.withAlpha(60)),
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              IconData(0xe157, fontFamily: 'MaterialIcons'),
-              color: _urlColor,
-              size: 20,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _displayText,
-                    style: const TextStyle(
-                      color: _labelColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (_displayText != _url)
-                    Text(
-                      _url,
-                      style: const TextStyle(
-                        color: _subtextColor,
-                        fontSize: 12,
-                        decoration: TextDecoration.underline,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _handleTap(context, config),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: markdownTheme.codeBlockBackground,
+            borderRadius: BorderRadius.circular(editorTheme.radiusMd),
+            border: Border.all(color: markdownTheme.codeBlockBorder),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.link_rounded,
+                  color: markdownTheme.linkColor,
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _displayText,
+                        style: editorTheme.smallStyle.copyWith(
+                          color: markdownTheme.linkColor,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
-              ),
+                      if (_displayText != _url)
+                        Text(
+                          _url,
+                          style: editorTheme.xSmallStyle.copyWith(
+                            color: editorTheme.mutedForeground,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _placeholder() {
-    return Container(
-      padding: const EdgeInsets.all(12),
+  Widget _placeholder(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: _background,
-        borderRadius: BorderRadius.circular(6),
+        color: markdownTheme.codeBlockBackground,
+        borderRadius: BorderRadius.circular(editorTheme.radiusMd),
+        border: Border.all(color: markdownTheme.codeBlockBorder),
       ),
-      child: const Text(
-        'No URL',
-        style: TextStyle(color: _subtextColor, fontSize: 14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Text('No URL', style: editorTheme.smallStyle),
       ),
     );
   }

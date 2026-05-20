@@ -56,9 +56,7 @@ class _VideoBlockWidget extends StatelessWidget {
   final BlockNode node;
   final void Function(BlockEvent) onEvent;
 
-  static const double _defaultHeight = 200.0;
-  static const Color _defaultBackground = Color(0xFF1A1A1A);
-  static const Color _iconColor = Color(0xFFFFFFFF);
+  static const double _maxPreviewWidth = 720.0;
 
   String get _source => node.attributes['source'] as String? ?? 'network';
   String get _url => node.attributes['url'] as String? ?? '';
@@ -71,7 +69,7 @@ class _VideoBlockWidget extends StatelessWidget {
     final config = BlockEditorScope.maybeOf(context)?.videoConfig;
 
     if (_resolvedPath.isEmpty) {
-      return _placeholder();
+      return _placeholder(context);
     }
 
     return GestureDetector(
@@ -87,26 +85,73 @@ class _VideoBlockWidget extends StatelessWidget {
   }
 
   Widget _buildPreview(BuildContext context, VideoBlockConfig? config) {
-    return Container(
-      height: _defaultHeight,
-      width: double.infinity,
-      color: _defaultBackground,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if (config?.showControls ?? true)
-            const _PlayButton(color: _iconColor),
-        ],
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: _maxPreviewWidth),
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: markdownTheme.codeBlockBackground,
+              border: Border.all(color: markdownTheme.codeBlockBorder),
+              borderRadius: BorderRadius.circular(editorTheme.radiusMd),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Positioned(
+                  left: 14,
+                  right: 14,
+                  bottom: 12,
+                  child: Text(
+                    _resolvedPath,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: editorTheme.xSmallStyle,
+                  ),
+                ),
+                if (config?.showControls ?? true)
+                  _PlayButton(color: editorTheme.foreground),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  Widget _placeholder() {
-    return Container(
-      height: _defaultHeight,
-      color: _defaultBackground,
-      child: const Center(
-        child: Text('No video', style: TextStyle(color: _iconColor)),
+  Widget _placeholder(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: markdownTheme.codeBlockBackground,
+            border: Border.all(color: markdownTheme.codeBlockBorder),
+            borderRadius: BorderRadius.circular(editorTheme.radiusMd),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.videocam_off_outlined,
+                  size: 18,
+                  color: editorTheme.mutedForeground,
+                ),
+                const SizedBox(width: 10),
+                Text('No video', style: editorTheme.smallStyle),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

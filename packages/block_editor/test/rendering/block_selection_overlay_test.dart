@@ -60,7 +60,7 @@ void main() {
       );
       final customPaint = tester.widget<CustomPaint>(findHighlightPaint());
       final painter = customPaint.painter! as SelectionHighlightPainter;
-      expect(painter.color, const Color(0x443399FF));
+      expect(painter.color, const Color(0x663B82F6));
     });
 
     testWidgets('uses supplied highlight color', (tester) async {

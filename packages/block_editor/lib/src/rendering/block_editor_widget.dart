@@ -157,6 +157,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       OverlayPortalController();
   ScrollController? _internalScrollController;
   TextInputConnection? _inputConnection;
+  int? _viewId;
   TextRange _composingRange = TextRange.empty;
   bool _toolbarVisible = false;
   bool _slashMenuVisible = false;
@@ -470,19 +471,37 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     }
   }
 
+  TextInputConfiguration _imeConfiguration() {
+    // The IME session must be bound to the hosting view: in multi-view
+    // embeddings the implicit view can lack a native window, and a config
+    // without viewId attaches the platform text input there — keystrokes
+    // then never reach the editor.
+    _viewId = View.maybeOf(context)?.viewId;
+    return TextInputConfiguration(
+      viewId: _viewId,
+      inputType: TextInputType.multiline,
+      inputAction: TextInputAction.newline,
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final connection = _inputConnection;
+    if (connection != null &&
+        connection.attached &&
+        View.maybeOf(context)?.viewId != _viewId) {
+      connection.updateConfig(_imeConfiguration());
+    }
+  }
+
   void _openIMEConnection() {
     if (widget.readOnly) return;
     if (_embeddedInputFocusDepth > 0) return;
     final sel = widget.controller.selection;
     if (sel is! CollapsedSelection) return;
     _inputConnection?.close();
-    _inputConnection = TextInput.attach(
-      this,
-      const TextInputConfiguration(
-        inputType: TextInputType.multiline,
-        inputAction: TextInputAction.newline,
-      ),
-    );
+    _inputConnection = TextInput.attach(this, _imeConfiguration());
     _inputConnection!.show();
     _syncIMEState();
   }

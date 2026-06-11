@@ -219,6 +219,31 @@ void main() {
       expect(updated?.delta?.plainText, 'First typed');
     });
 
+    testWidgets('text input attaches with the hosting view id', (tester) async {
+      final focusNode = FocusNode(debugLabel: 'block-editor');
+      addTearDown(focusNode.dispose);
+
+      await tester.pumpWidget(
+        wrap(BlockEditorWidget(controller: controller, focusNode: focusNode)),
+      );
+
+      focusNode.requestFocus();
+      await tester.pump();
+      await tester.tap(find.text('First', findRichText: true));
+      await tester.pump();
+
+      expect(tester.testTextInput.hasAnyClients, isTrue);
+
+      // In multi-view embeddings the IME session must be bound to the view
+      // hosting the editor; a config without viewId binds to the implicit
+      // view, which may have no native window.
+      final editorContext = tester.element(find.byType(BlockEditorWidget));
+      expect(
+        tester.testTextInput.setClientArgs?['viewId'],
+        View.of(editorContext).viewId,
+      );
+    });
+
     testWidgets('checkbox toggle updates checked attribute', (tester) async {
       final todoController = BlockController(
         document: BlockDocument([

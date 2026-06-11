@@ -14,7 +14,11 @@ This document captures the current state of the `block_editor` work intended for
 Markdown conversion is handled by `BlockMarkdownCodec`:
 
 - `BlockMarkdownCodec.decode(markdown)` produces a `BlockDocument`.
-- `BlockMarkdownCodec.encode(document)` produces Markdown.
+- `BlockMarkdownCodec.encode(document)` produces Markdown. If the document was
+  decoded from Markdown, unchanged blocks reuse their original source slices
+  instead of being normalized.
+- `BlockMarkdownCodec.encodeNormalized(document)` produces semantic normalized
+  Markdown without source reuse for diagnostics and comparison.
 - Markdown-specific features are mapped onto built-in block types instead of being stored as opaque raw strings where possible.
 
 The current Markdown block mappings are:
@@ -44,6 +48,8 @@ Recommended host flow:
 2. Create a `BlockController(document: BlockMarkdownCodec.decode(markdown))`.
 3. Render `BlockEditorWidget(controller: controller)` inside the Markdown editor pane.
 4. When saving from block mode, call `BlockMarkdownCodec.encode(controller.document)`.
+   This now preserves unchanged decoded Markdown source while re-encoding only
+   blocks whose semantic content changed.
 5. When toggling to raw Markdown mode, encode the current block document first.
 6. When toggling back to block mode, decode the raw Markdown buffer into a fresh `BlockDocument` or replace the current controller document.
 
@@ -106,6 +112,79 @@ The Playground opens on the `mock_ui` dark theme by default. This makes it the
 right surface for tuning Markdown UI/UX before moving values back into package
 defaults or CodeForge host overrides.
 
+## Real Markdown Workspace Demo
+
+The default **Editor** tab now has a file-backed workspace mode for testing the
+Markdown block editor against real documents instead of only the built-in
+fixture.
+
+The workspace pane intentionally follows the same interaction model as
+`deps/git-client/git_client_app`:
+
+- `file_picker` opens a native folder picker.
+- A left file tree lazy-loads directory children.
+- Recursive filesystem watching refreshes loaded directories when files are
+  added, removed, or renamed.
+- The active Markdown file is selected/revealed in the tree.
+- Context menus expose open/copy-path/copy-relative-path actions.
+- Generated/heavy folders such as `.git`, `.dart_tool`, `.vten`, `build`,
+  `node_modules`, `Pods`, and `DerivedData` are filtered out.
+
+This is implemented in the example app only:
+
+- `example/lib/workspace/markdown_workspace_controller.dart`
+- `example/lib/workspace/markdown_file_tree_view.dart`
+- `example/lib/workspace/markdown_workspace_pane.dart`
+
+The controller keeps the package dependency clean: `block_editor` remains a
+pure editor/model package, while the example app owns native folder picking,
+real filesystem access, and workspace shell state.
+
+On macOS, this demo requires the sandbox entitlement:
+
+```text
+com.apple.security.files.user-selected.read-write
+```
+
+The entitlement is present in both `DebugProfile.entitlements` and
+`Release.entitlements` so the native folder picker grants the app permission to
+read and save files under the selected Markdown workspace.
+
+Opening a Markdown file follows the same host contract CodeForge should use:
+
+1. Read the `.md` file as text.
+2. Decode with `BlockMarkdownCodec.decode(markdown)`.
+3. Apply `.vten` presentation state for that workspace-relative path.
+4. Replace the active `BlockController` document without recording undo.
+5. On block changes, debounce `BlockMarkdownCodec.encode(controller.document)`
+   and write the Markdown back to the selected file.
+
+The example stores app/workspace shell state under the package `.vten` folder:
+
+```text
+.vten/block_editor/workspace_state.json
+```
+
+Per-document presentation state for real workspace files is stored inside the
+chosen workspace root:
+
+```text
+<workspace>/.vten/block_editor/presentation/<document-key>.json
+```
+
+The document id is the workspace-relative Markdown path. This mirrors the
+intended CodeForge integration: file content stays Markdown, while block
+alignment and table sizes stay outside Markdown in `.vten`.
+
+Normal paragraph soft breaks are normalized for rendering. If a Markdown file
+hard-wraps prose at 80 or 100 columns, `BlockMarkdownCodec.decode` now turns
+those single newlines into spaces in the paragraph `TextDelta`, so the text
+flows to the actual editor width instead of visually breaking at the source
+line length. The original source slice is still attached to the block, so an
+unchanged paragraph saves back with the exact same source wrapping. Explicit
+Markdown hard breaks using trailing spaces or a trailing backslash remain
+visible as line breaks.
+
 The default fixture is intentionally a renderer matrix, not a small demo. It
 includes frontmatter, all heading levels, long paragraphs, rich inline spans,
 nested numbers, bullets, todos, quotes, several callout variants, compact and
@@ -124,6 +203,8 @@ The playground exposes live controls for:
 - bullet, numbered, and todo marker vertical offsets
 - table text size
 - code text size
+- compact reader mode
+- centered vs leading document alignment
 - read-only/editable mode
 - source pane visibility
 - block-only showcase visibility
@@ -139,6 +220,98 @@ MarkdownDocumentThemeData.defaults(context).copyWith(
 
 Hosts can wrap any editor subtree in `MarkdownDocumentTheme` to override these
 tokens without forking the built-in list widgets.
+
+The Markdown document theme now also carries reader-layout preferences:
+
+```dart
+MarkdownDocumentThemeData.defaults(context).copyWith(
+  density: MarkdownDocumentDensity.compact,
+  contentAlignment: MarkdownDocumentContentAlignment.centered,
+  blockSpacingScale: 0.58,
+  surfacePaddingScale: 0.78,
+)
+```
+
+`blockSpacingScale` reduces the vertical rhythm between blocks. `surfacePaddingScale`
+reduces the internal padding of component-like blocks such as tables, code
+blocks, Mermaid/math/source blocks, raw Markdown blocks, callouts, and drag
+ghosts. This gives CodeForge a first-class reader-mode compact setting without
+changing Markdown serialization.
+
+The example app now exposes those compact/center controls in both the default
+`Editor` tab and the rendering playground. Both surfaces share one preference
+store and persist the compact/center reader preferences under:
+
+```text
+.vten/block_editor/reader_preferences.json
+```
+
+Those preferences are intentionally outside Markdown. CodeForge should follow
+the same model for per-file or per-workspace presentation state: keep `.md`
+content source-backed, and store view preferences under `.vten` keyed by the
+workspace/file identity instead of writing layout metadata into Markdown.
+
+Individual paragraph, heading, and table blocks now support a `textAlign`
+presentation attribute with `left`, `center`, and `right` values. The block
+action menu exposes this as `Align -> Align left/center/right`. Heading and
+paragraph blocks apply it to the rendered text; table blocks apply it to the
+whole table container, separate from the existing per-column Markdown table
+alignment markers. This is also presentation state and should be persisted by
+CodeForge under `.vten` rather than encoded into plain Markdown.
+
+`MarkdownPresentationState` is the first reusable package-level contract for
+that `.vten` state. It captures presentation-only block attributes from a
+`BlockDocument`, keys them by deterministic Markdown-derived block fingerprints,
+and reapplies them after the same Markdown file is decoded again:
+
+```dart
+final documentId = 'docs/plan.md'; // CodeForge should use workspace-relative path.
+final document = BlockMarkdownCodec.decode(markdown);
+final presentation = await presentationStore.load(documentId);
+final controller = BlockController(
+  document: presentation?.applyTo(document) ?? document,
+);
+
+// On document changes:
+await presentationStore.save(
+  documentId,
+  MarkdownPresentationState.capture(
+    controller.document,
+    documentId: documentId,
+  ),
+);
+```
+
+The example app wires this through `VtenPresentationStateStore`, persisted at:
+
+```text
+.vten/block_editor/presentation/<document-key>.json
+```
+
+The current source mapping is intentionally conservative:
+
+- Block keys are built from block type, semantic block JSON, decoded source
+  span/source slice when available, and an occurrence-index fallback for
+  repeated identical blocks.
+- Source metadata, list numbering helpers, `textAlign`, and reserved table size
+  attributes are ignored so presentation changes do not dirty Markdown source
+  preservation.
+- If a block's Markdown content changes, stale presentation state for that block
+  is not reapplied.
+- If multiple identical decoded blocks are reordered in memory, source-span
+  keys let presentation follow the moved source-backed block before falling back
+  to ordinal occurrence matching.
+- If identical blocks are externally reordered in raw Markdown without stable
+  anchors, the fallback can still follow ordinal position. A future CodeForge
+  integration can improve that further with explicit block anchors or a
+  source-patch move tracker.
+
+Bulk block selection now keeps a stable paint layer around each block, even
+when the block is not selected, so selecting multiple components does not swap
+layout wrappers or nudge the measured size. Fully covered blocks suppress
+their inline text selection spans and use one block-level selection paint only,
+which keeps the selection blue consistent instead of darkening text runs with
+double-painted highlight backgrounds.
 
 Bullet list markers are drawn Flutter shapes rather than text glyphs. This
 keeps the marker centered against the first text line across font stacks and
@@ -161,6 +334,18 @@ Command routing handles synchronous editor commands:
 - Arrow navigation
 - Shift-arrow selection
 - Word, line, visual-line, and document movement
+
+List authoring now has Markdown-aware editing behavior:
+
+- `Tab` and `Shift+Tab` indent and outdent selected list blocks as a group.
+- `Enter` on a non-empty list item continues the same list type and indent.
+- `Enter` on an empty nested list item dedents one level before exiting the
+  list, so repeated Enter presses walk back out naturally.
+- `Backspace` at the start of an indented list item dedents before merging.
+- `Backspace` at the start of a top-level list item converts it to a paragraph
+  and clears list-only attributes before a later Backspace can merge blocks.
+- Todo shortcuts work both from paragraph markers such as `- [ ]` and from a
+  bullet item whose text becomes `[ ]` or `[x]`.
 
 Clipboard handling lives in `BlockEditorWidget` because paste needs async platform clipboard access:
 
@@ -188,9 +373,23 @@ The table UI supports:
 - Inline Markdown preview for inactive cells so bold, italic, links, code, and
   line breaks read like rendered Markdown while the focused cell remains an
   editable text field.
+- Table cells own a table-local keyboard layer:
+  - `Cmd/Ctrl+B` and `Cmd/Ctrl+I` wrap selected cell text in Markdown syntax.
+  - `Tab` and `Shift+Tab` move focus forward/backward through cells.
+  - `Tab` from the final body cell appends a row through the same row insertion
+    event path used by the hover controls.
+  - Plain left/right arrows move to adjacent cells only at text boundaries.
+  - Plain up/down arrows move to the cell above/below only from the first or
+    last source line of a multiline cell.
+  - `Enter` inserts a cell line break; Markdown export serializes it as `<br>`.
 - Column and row resize handles anchored to the actual table grid edge rather
   than the padded text area. Handles are available from every visible cell, not
   only edge cells.
+- Column and row resize handles commit presentation attributes on pointer-up:
+  `tableColumnWidths` and `tableRowHeights`. These attributes are ignored by
+  Markdown source fingerprints and captured by `MarkdownPresentationState`, so
+  resized table layouts can survive reload through `.vten` without changing
+  Markdown table syntax.
 - Resize handles only mutate size during an explicit primary-button drag.
   Wheel scrolling and trackpad pan/scroll gestures over a handle are ignored by
   the resize logic, so hovering an expand point cannot accidentally grow a row
@@ -202,8 +401,9 @@ The table UI supports:
 Current table constraints:
 
 - Table cells are plain strings, not nested rich-text documents.
-- Table editing is structural but not yet a full spreadsheet-like selection model.
-- Keyboard navigation across cells is still basic.
+- Table editing is structural but not yet a full spreadsheet-like selection
+  model with rectangular multi-cell selection, fill handles, or formula-like
+  behavior.
 
 ## Block Controls
 
@@ -213,6 +413,10 @@ Blocks now have Notion-style controls:
 - A block action handle opens block actions.
 - The block menu can select an entire block.
 - Existing block actions include delete, duplicate, turn into, move up, and move down.
+- Drag previews use the document column as a maximum width and shrink-wrap
+  natural content-sized blocks such as headings, paragraphs, quotes, media,
+  files, links, and tables. This keeps the floating preview close to the block
+  being moved instead of rendering as a full viewport-width row.
 
 This gives the Markdown WYSIWYG mode enough block-level manipulation for document editing, but it is not yet a full Notion clone. Drag, multi-block select, and command-menu workflows still need more polish before they feel complete.
 
@@ -359,11 +563,106 @@ The current changes include focused coverage for:
 - Mermaid flowchart and sequence preview rendering.
 - Block controls and action menu selection.
 - Rich text rendering and cursor/selection behavior.
+- Table-local keyboard navigation for Tab, Shift+Tab, Enter line breaks, arrow
+  boundary movement, and keyboard-driven row insertion.
+- List-aware Backspace, nested empty-list Enter dedent behavior, and todo
+  marker shortcuts inside bullet items.
+- Markdown source-fidelity inspection, including exact source-preserving
+  round-trip detection, raw Markdown preservation kinds, source line/offset
+  spans, unchanged-block preservation, normalized-output comparison, and
+  fixture-corpus coverage.
+- Markdown presentation-state capture/apply, duplicate-block occurrence keys,
+  source-span matching for reordered source-backed duplicates, table dimension
+  attributes, stale-entry rejection when source content changes, JSON round
+  trips, and `.vten` presentation-file persistence/deletion.
+- Example-app Markdown workspace selection, `.vten` workspace-state restore,
+  active Markdown file loading/saving, lazy file-tree loading, generated-folder
+  filtering, active-file reveal, and open-file callbacks.
+- Controller-level operation records on document changes for insert, delete,
+  update, move, and replace mutations.
+
+## Source Fidelity Diagnostics
+
+`BlockMarkdownCodec.inspect(markdown)` reports what happens when a Markdown
+string is decoded and encoded again. This is the source-fidelity layer that lets
+CodeForge use block mode without rewriting unchanged Markdown.
+
+The report includes:
+
+- normalized original Markdown
+- source-preserving encoded Markdown
+- normalized encoded Markdown
+- exact source-preserving round-trip status
+- exact normalized round-trip status
+- decoded block count
+- source-backed block count
+- preserved source block count
+- changed source block count
+- raw Markdown block count
+- raw Markdown counts by kind
+- diagnostics with severity, source line span, and raw kind
+
+All blocks decoded from Markdown now keep:
+
+```text
+sourceStartLine
+sourceEndLine
+sourceStartOffset
+sourceEndOffset
+sourceMarkdown
+sourceFingerprint
+```
+
+Raw Markdown fallback blocks additionally keep:
+
+```text
+rawKind
+```
+
+`sourceFingerprint` is a semantic fingerprint of the decoded block, excluding
+source metadata and transient rendering attributes. When the current block still
+matches that fingerprint, `BlockMarkdownCodec.encode` emits the original
+`sourceMarkdown` slice. When it differs, the block is re-encoded normally and
+the surrounding unchanged blocks can still preserve their exact Markdown.
+
+This lets host UI and tests distinguish safe source preservation from actual
+loss or normalization. For example, HTML blocks, footnote definitions, reference
+definitions, Obsidian comments, block anchors, original ordered-list numbers,
+and compact table separators can stay intact while edited blocks are still
+written back as normal Markdown.
+
+## Operation Log
+
+`BlockController.changes` now emits a `DocumentChange.operations` list. Each
+entry is a `BlockDocumentOperation` with:
+
+```text
+type
+blockId
+before
+after
+fromIndex
+toIndex
+```
+
+This is intentionally a block-level log, not a source-offset patcher yet. It is
+the foundation for later Markdown patch application, richer undo diagnostics,
+table/block operation batching, and host-level dirty-state reporting. Current
+operation kinds are:
+
+```text
+insert
+delete
+update
+move
+replace
+```
 
 Useful focused verification commands:
 
 ```bash
 flutter test test/markdown/block_markdown_codec_test.dart
+flutter test test/controller/block_controller_test.dart
 flutter test test/plugins/code_block_test.dart
 flutter test test/rendering/block_editor_widget_test.dart
 flutter test test/rendering/block_widgets_test.dart
@@ -379,9 +678,11 @@ The best next phase is to stabilize the Markdown authoring experience rather tha
   editor for real TextMate/LSP behavior.
 - Replace the lightweight Mermaid preview with a full Mermaid-compatible renderer
   if advanced diagrams become a requirement.
-- Add richer table keyboard interactions: Tab, Shift+Tab, Enter, row/column focus movement.
 - Add richer table menus for column alignment, row/column sizing reset, and
   cell-level transforms.
+- Add spreadsheet-style table selection features if needed: rectangular
+  multi-cell selection, copy/paste cell ranges, and row/column keyboard
+  commands.
 - Add a reader density control that applies compact/default/comfortable spacing
   presets across paragraph, list, table, media, math, and code blocks.
 - Add Markdown-preserving fallbacks for unsupported constructs.

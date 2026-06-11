@@ -19,6 +19,7 @@ final class ParagraphBlock extends BlockPlugin {
   ) => ParagraphWidget(
     blockId: node.id,
     delta: node.delta ?? TextDelta.empty(),
+    attributes: node.attributes,
     selection: selection,
     onEvent: onEvent,
   );
@@ -57,6 +58,7 @@ final class H1Block extends BlockPlugin {
   ) => H1Widget(
     blockId: node.id,
     delta: node.delta ?? TextDelta.empty(),
+    attributes: node.attributes,
     selection: selection,
     onEvent: onEvent,
   );
@@ -96,6 +98,7 @@ final class H2Block extends BlockPlugin {
   ) => H2Widget(
     blockId: node.id,
     delta: node.delta ?? TextDelta.empty(),
+    attributes: node.attributes,
     selection: selection,
     onEvent: onEvent,
   );
@@ -135,6 +138,7 @@ final class H3Block extends BlockPlugin {
   ) => H3Widget(
     blockId: node.id,
     delta: node.delta ?? TextDelta.empty(),
+    attributes: node.attributes,
     selection: selection,
     onEvent: onEvent,
   );
@@ -174,6 +178,7 @@ final class H4Block extends BlockPlugin {
   ) => H4Widget(
     blockId: node.id,
     delta: node.delta ?? TextDelta.empty(),
+    attributes: node.attributes,
     selection: selection,
     onEvent: onEvent,
   );
@@ -213,6 +218,7 @@ final class H5Block extends BlockPlugin {
   ) => H5Widget(
     blockId: node.id,
     delta: node.delta ?? TextDelta.empty(),
+    attributes: node.attributes,
     selection: selection,
     onEvent: onEvent,
   );
@@ -252,6 +258,7 @@ final class H6Block extends BlockPlugin {
   ) => H6Widget(
     blockId: node.id,
     delta: node.delta ?? TextDelta.empty(),
+    attributes: node.attributes,
     selection: selection,
     onEvent: onEvent,
   );
@@ -486,6 +493,7 @@ final class TableBlock extends BlockPlugin {
     headers: _stringList(node.attributes['headers']),
     rows: _rowsList(node.attributes['rows']),
     alignments: _stringList(node.attributes['alignments']),
+    attributes: node.attributes,
     onEvent: onEvent,
   );
 

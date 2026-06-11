@@ -14,27 +14,45 @@ class EditorTopBar extends StatelessWidget {
     super.key,
     required this.titleController,
     required this.readOnly,
+    required this.compactReader,
+    required this.centerContent,
     required this.themeMode,
+    this.workspaceFileLabel,
+    this.workspaceDirty = false,
+    this.workspaceSaving = false,
+    this.onPickWorkspace,
+    this.onSaveMarkdown,
     required this.onExportJson,
     required this.onExportMarkdown,
     required this.onToggleReadOnly,
+    required this.onToggleCompactReader,
+    required this.onToggleCenterContent,
     required this.onClear,
     required this.onToggleTheme,
   });
 
   final TextEditingController titleController;
   final bool readOnly;
+  final bool compactReader;
+  final bool centerContent;
   final ThemeMode themeMode;
+  final String? workspaceFileLabel;
+  final bool workspaceDirty;
+  final bool workspaceSaving;
+  final VoidCallback? onPickWorkspace;
+  final VoidCallback? onSaveMarkdown;
   final VoidCallback onExportJson;
   final VoidCallback onExportMarkdown;
   final VoidCallback onToggleReadOnly;
+  final VoidCallback onToggleCompactReader;
+  final VoidCallback onToggleCenterContent;
   final VoidCallback onClear;
   final VoidCallback onToggleTheme;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppColors>()!;
-    final isWide = MediaQuery.of(context).size.width >= 768;
+    final isWide = MediaQuery.of(context).size.width >= 1120;
 
     return Container(
       decoration: BoxDecoration(
@@ -51,6 +69,15 @@ class EditorTopBar extends StatelessWidget {
               readOnly: readOnly,
             ),
           ),
+          if (workspaceFileLabel != null) ...[
+            const SizedBox(width: 10),
+            _WorkspaceFileBadge(
+              label: workspaceFileLabel!,
+              dirty: workspaceDirty,
+              saving: workspaceSaving,
+              colors: colors,
+            ),
+          ],
           const SizedBox(width: 12),
           if (readOnly) ...[
             _ReadOnlyBadge(colors: colors),
@@ -59,10 +86,18 @@ class EditorTopBar extends StatelessWidget {
           _ActionRow(
             isWide: isWide,
             readOnly: readOnly,
+            compactReader: compactReader,
+            centerContent: centerContent,
             themeMode: themeMode,
+            workspaceDirty: workspaceDirty,
+            workspaceSaving: workspaceSaving,
+            onPickWorkspace: onPickWorkspace,
+            onSaveMarkdown: onSaveMarkdown,
             onExportJson: onExportJson,
             onExportMarkdown: onExportMarkdown,
             onToggleReadOnly: onToggleReadOnly,
+            onToggleCompactReader: onToggleCompactReader,
+            onToggleCenterContent: onToggleCenterContent,
             onClear: onClear,
             onToggleTheme: onToggleTheme,
             colors: colors,
@@ -113,6 +148,69 @@ class _TitleField extends StatelessWidget {
   }
 }
 
+class _WorkspaceFileBadge extends StatelessWidget {
+  const _WorkspaceFileBadge({
+    required this.label,
+    required this.dirty,
+    required this.saving,
+    required this.colors,
+  });
+
+  final String label;
+  final bool dirty;
+  final bool saving;
+  final AppColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = saving
+        ? 'saving'
+        : dirty
+        ? 'unsaved'
+        : 'saved';
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 260),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: colors.background,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: colors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.description_outlined, size: 13, color: colors.accent),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.textMuted,
+                  fontSize: 11.5,
+                  height: 1.1,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              status,
+              style: TextStyle(
+                color: dirty ? colors.accent : colors.textMuted,
+                fontSize: 11,
+                height: 1.1,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ReadOnlyBadge extends StatelessWidget {
   const _ReadOnlyBadge({required this.colors});
   final AppColors colors;
@@ -149,10 +247,18 @@ class _ActionRow extends StatelessWidget {
   const _ActionRow({
     required this.isWide,
     required this.readOnly,
+    required this.compactReader,
+    required this.centerContent,
     required this.themeMode,
+    required this.workspaceDirty,
+    required this.workspaceSaving,
+    required this.onPickWorkspace,
+    required this.onSaveMarkdown,
     required this.onExportJson,
     required this.onExportMarkdown,
     required this.onToggleReadOnly,
+    required this.onToggleCompactReader,
+    required this.onToggleCenterContent,
     required this.onClear,
     required this.onToggleTheme,
     required this.colors,
@@ -160,10 +266,18 @@ class _ActionRow extends StatelessWidget {
 
   final bool isWide;
   final bool readOnly;
+  final bool compactReader;
+  final bool centerContent;
   final ThemeMode themeMode;
+  final bool workspaceDirty;
+  final bool workspaceSaving;
+  final VoidCallback? onPickWorkspace;
+  final VoidCallback? onSaveMarkdown;
   final VoidCallback onExportJson;
   final VoidCallback onExportMarkdown;
   final VoidCallback onToggleReadOnly;
+  final VoidCallback onToggleCompactReader;
+  final VoidCallback onToggleCenterContent;
   final VoidCallback onClear;
   final VoidCallback onToggleTheme;
   final AppColors colors;
@@ -175,6 +289,33 @@ class _ActionRow extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (onPickWorkspace != null) ...[
+          _TopBarButton(
+            icon: Icons.folder_open_outlined,
+            label: 'Folder',
+            tooltip: 'Open Markdown folder',
+            showLabel: isWide,
+            onTap: onPickWorkspace!,
+            colors: colors,
+          ),
+          const SizedBox(width: 6),
+        ],
+        if (onSaveMarkdown != null) ...[
+          _TopBarButton(
+            icon: workspaceSaving ? Icons.sync : Icons.save_outlined,
+            label: workspaceSaving ? 'Saving' : 'Save',
+            tooltip: workspaceSaving
+                ? 'Saving Markdown'
+                : workspaceDirty
+                ? 'Save Markdown now'
+                : 'Markdown saved',
+            showLabel: isWide,
+            onTap: onSaveMarkdown!,
+            colors: colors,
+            active: workspaceDirty || workspaceSaving,
+          ),
+          const SizedBox(width: 6),
+        ],
         _TopBarButton(
           icon: Icons.data_object,
           label: 'JSON',
@@ -191,6 +332,32 @@ class _ActionRow extends StatelessWidget {
           showLabel: isWide,
           onTap: onExportMarkdown,
           colors: colors,
+        ),
+        const SizedBox(width: 6),
+        _TopBarButton(
+          icon: compactReader
+              ? Icons.density_small_outlined
+              : Icons.density_medium_outlined,
+          label: 'Compact',
+          tooltip: compactReader
+              ? 'Switch to comfortable reader'
+              : 'Switch to compact reader',
+          showLabel: isWide,
+          onTap: onToggleCompactReader,
+          colors: colors,
+          active: compactReader,
+        ),
+        const SizedBox(width: 6),
+        _TopBarButton(
+          icon: centerContent
+              ? Icons.format_align_center
+              : Icons.format_align_left,
+          label: centerContent ? 'Center' : 'Left',
+          tooltip: centerContent ? 'Align content left' : 'Center content',
+          showLabel: isWide,
+          onTap: onToggleCenterContent,
+          colors: colors,
+          active: centerContent,
         ),
         const SizedBox(width: 6),
         _TopBarButton(

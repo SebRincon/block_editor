@@ -33,6 +33,23 @@ Future<void> hoverTableCell(WidgetTester tester, String text) async {
   await tester.pump();
 }
 
+Future<void> sendMetaShortcut(
+  WidgetTester tester,
+  LogicalKeyboardKey key,
+) async {
+  await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+  await tester.sendKeyEvent(key);
+  await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+  await tester.pump();
+}
+
+Future<void> sendPlainKey(WidgetTester tester, LogicalKeyboardKey key) async {
+  await tester.sendKeyDownEvent(key);
+  await tester.sendKeyUpEvent(key);
+  await tester.pump();
+  await tester.pump();
+}
+
 Finder _tableCellFinder(String text) {
   final field = find.widgetWithText(TextField, text);
   if (field.evaluate().isNotEmpty) return field;
@@ -56,6 +73,12 @@ Finder _tableCellSurfaceFinder(String tableId) {
     return key is ValueKey<String> &&
         key.value.startsWith('block-editor-table-cell-$tableId-');
   });
+}
+
+Finder _tableResizeHandleFinder(MouseCursor cursor) {
+  return find.byWidgetPredicate(
+    (widget) => widget is MouseRegion && widget.cursor == cursor,
+  );
 }
 
 Future<void> hoverBlockText(WidgetTester tester, String text) async {
@@ -167,6 +190,35 @@ void main() {
       expect((controller.selection as CollapsedSelection).point.blockId, 'b1');
     });
 
+    testWidgets('opens text input when selection is created after focus', (
+      tester,
+    ) async {
+      final focusNode = FocusNode(debugLabel: 'block-editor');
+      addTearDown(focusNode.dispose);
+
+      await tester.pumpWidget(
+        wrap(BlockEditorWidget(controller: controller, focusNode: focusNode)),
+      );
+
+      focusNode.requestFocus();
+      await tester.pump();
+
+      expect(focusNode.hasFocus, isTrue);
+      expect(controller.selection, isA<NoSelection>());
+
+      await tester.tap(find.text('First', findRichText: true));
+      await tester.pump();
+
+      expect(controller.selection, isA<CollapsedSelection>());
+      expect(tester.testTextInput.hasAnyClients, isTrue);
+
+      tester.testTextInput.enterText('First typed');
+      await tester.pump();
+
+      final updated = controller.document.findById('b1');
+      expect(updated?.delta?.plainText, 'First typed');
+    });
+
     testWidgets('checkbox toggle updates checked attribute', (tester) async {
       final todoController = BlockController(
         document: BlockDocument([
@@ -216,6 +268,44 @@ void main() {
 
       expect(tableController.document.blocks.single.attributes['rows'], [
         ['Done', 'Open'],
+      ]);
+    });
+
+    testWidgets('table cell formatting shortcuts update table attributes', (
+      tester,
+    ) async {
+      final tableController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'table1',
+            type: BlockTypes.table,
+            attributes: {
+              'headers': const ['Name', 'Status'],
+              'rows': const [
+                ['Draft', 'Open'],
+              ],
+            },
+          ),
+        ]),
+      );
+      addTearDown(tableController.dispose);
+      await tester.pumpWidget(
+        wrap(BlockEditorWidget(controller: tableController)),
+      );
+
+      await activateTableCell(tester, 'Draft');
+      final field = tester.widget<TextField>(
+        find.widgetWithText(TextField, 'Draft'),
+      );
+      field.controller!.selection = const TextSelection(
+        baseOffset: 0,
+        extentOffset: 5,
+      );
+
+      await sendMetaShortcut(tester, LogicalKeyboardKey.keyB);
+
+      expect(tableController.document.blocks.single.attributes['rows'], [
+        ['**Draft**', 'Open'],
       ]);
     });
 
@@ -482,6 +572,37 @@ void main() {
       ]);
     });
 
+    testWidgets('Tab from last table cell appends a row through controller', (
+      tester,
+    ) async {
+      final tableController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'table1',
+            type: BlockTypes.table,
+            attributes: {
+              'headers': const ['A', 'B'],
+              'rows': const [
+                ['1', '2'],
+              ],
+            },
+          ),
+        ]),
+      );
+      addTearDown(tableController.dispose);
+      await tester.pumpWidget(
+        wrap(BlockEditorWidget(controller: tableController)),
+      );
+
+      await activateTableCell(tester, '2');
+      await sendPlainKey(tester, LogicalKeyboardKey.tab);
+
+      expect(tableController.document.blocks.single.attributes['rows'], [
+        ['1', '2'],
+        ['', ''],
+      ]);
+    });
+
     testWidgets('new empty table rows and columns delete immediately', (
       tester,
     ) async {
@@ -652,6 +773,97 @@ void main() {
       ]);
     });
 
+    testWidgets('table row resize handles persist dimensions in attributes', (
+      tester,
+    ) async {
+      final tableController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'table1',
+            type: BlockTypes.table,
+            attributes: {
+              'headers': const ['A', 'B'],
+              'rows': const [
+                ['1', '2'],
+                ['3', '4'],
+              ],
+            },
+          ),
+        ]),
+      );
+      addTearDown(tableController.dispose);
+      await tester.pumpWidget(
+        wrap(BlockEditorWidget(controller: tableController)),
+      );
+
+      await hoverTableCell(tester, '1');
+      final rowHandle = _tableResizeHandleFinder(
+        SystemMouseCursors.resizeRow,
+      ).first;
+      final rowGesture = await tester.startGesture(
+        tester.getCenter(rowHandle),
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryMouseButton,
+      );
+      await rowGesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+      await rowGesture.up();
+      await tester.pump();
+
+      final heights =
+          tableController.document.blocks.single.attributes['tableRowHeights']
+              as Map;
+      expect(heights['0'], greaterThan(32));
+    });
+
+    testWidgets(
+      'table column resize handles persist dimensions in attributes',
+      (tester) async {
+        final tableController = BlockController(
+          document: BlockDocument([
+            BlockNode(
+              id: 'table1',
+              type: BlockTypes.table,
+              attributes: {
+                'headers': const ['A', 'B'],
+                'rows': const [
+                  ['1', '2'],
+                  ['3', '4'],
+                ],
+              },
+            ),
+          ]),
+        );
+        addTearDown(tableController.dispose);
+        await tester.pumpWidget(
+          wrap(BlockEditorWidget(controller: tableController)),
+        );
+
+        await hoverTableCell(tester, '1');
+        final columnHandle = _tableResizeHandleFinder(
+          SystemMouseCursors.resizeColumn,
+        ).first;
+        final columnGesture = await tester.startGesture(
+          tester.getCenter(columnHandle),
+          kind: PointerDeviceKind.mouse,
+          buttons: kPrimaryMouseButton,
+        );
+        await columnGesture.moveBy(const Offset(40, 0));
+        await tester.pump();
+        await columnGesture.up();
+        await tester.pump();
+
+        final widths =
+            tableController
+                    .document
+                    .blocks
+                    .single
+                    .attributes['tableColumnWidths']
+                as Map;
+        expect(widths['0'], greaterThan(96));
+      },
+    );
+
     testWidgets('dragging across text creates ExpandedSelection', (
       tester,
     ) async {
@@ -700,6 +912,37 @@ void main() {
       expect(selection.anchor.offset, 0);
       expect(selection.focus.blockId, 'b1');
       expect(selection.focus.offset, 5);
+    });
+
+    testWidgets('fully covered blocks use one stable block highlight layer', (
+      tester,
+    ) async {
+      final selectedController = BlockController(
+        document: BlockDocument([
+          BlockNode(
+            id: 'h1',
+            type: BlockTypes.heading1,
+            delta: TextDelta.fromPlainText('Selected heading'),
+          ),
+        ]),
+      );
+      addTearDown(selectedController.dispose);
+      selectedController.updateSelection(
+        const ExpandedSelection(
+          anchor: SelectionPoint(blockId: 'h1', offset: 0),
+          focus: SelectionPoint(blockId: 'h1', offset: 16),
+        ),
+      );
+
+      await tester.pumpWidget(
+        wrap(BlockEditorWidget(controller: selectedController)),
+      );
+      await tester.pump();
+
+      final renderer = tester.widget<RichTextRenderer>(
+        find.byType(RichTextRenderer),
+      );
+      expect(renderer.selection, isA<NoSelection>());
     });
   });
 

@@ -12,6 +12,7 @@ import 'package:flutter/gestures.dart'
         PointerUpEvent,
         kPrimaryMouseButton;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:block_editor/block_editor.dart';
 import 'embedded_text_editing_shortcuts.dart';
@@ -162,8 +163,9 @@ Widget _offsetMarker(double dy, Widget child) {
   Offset globalPosition,
   TextDelta delta,
   TextStyle baseStyle,
-  Map<String, String> variables,
-) {
+  Map<String, String> variables, [
+  TextAlign textAlign = TextAlign.left,
+]) {
   final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
   if (renderBox == null) {
     return (offset: 0, affinity: TextAffinity.downstream);
@@ -184,6 +186,7 @@ Widget _offsetMarker(double dy, Widget child) {
   );
   final painter = TextPainter(
     text: span,
+    textAlign: textAlign,
     textDirection: Directionality.of(context),
     textScaler: MediaQuery.textScalerOf(context),
     textHeightBehavior: blockEditorTextHeightBehavior,
@@ -201,6 +204,37 @@ Widget _offsetMarker(double dy, Widget child) {
   );
 }
 
+TextAlign _textAlignForAttributes(Map<String, dynamic> attributes) {
+  final value = attributes['textAlign']?.toString();
+  return switch (value) {
+    'center' => TextAlign.center,
+    'right' || 'end' => TextAlign.right,
+    _ => TextAlign.left,
+  };
+}
+
+AlignmentDirectional _blockAlignmentForAttributes(
+  Map<String, dynamic> attributes,
+) {
+  final value = attributes['textAlign']?.toString();
+  return switch (value) {
+    'center' => AlignmentDirectional.topCenter,
+    'right' || 'end' => AlignmentDirectional.topEnd,
+    _ => AlignmentDirectional.topStart,
+  };
+}
+
+CrossAxisAlignment _crossAxisAlignmentForAttributes(
+  Map<String, dynamic> attributes,
+) {
+  final value = attributes['textAlign']?.toString();
+  return switch (value) {
+    'center' => CrossAxisAlignment.center,
+    'right' || 'end' => CrossAxisAlignment.end,
+    _ => CrossAxisAlignment.start,
+  };
+}
+
 /// A paragraph block widget.
 class ParagraphWidget extends StatefulWidget {
   /// Creates a [ParagraphWidget] for the block identified by [blockId].
@@ -209,6 +243,7 @@ class ParagraphWidget extends StatefulWidget {
     required this.blockId,
     required this.delta,
     required this.onEvent,
+    this.attributes = const {},
     this.selection = EditorSelection.none,
   });
 
@@ -220,6 +255,9 @@ class ParagraphWidget extends StatefulWidget {
 
   /// Called when the user interacts with this block.
   final void Function(BlockEvent) onEvent;
+
+  /// Block-level rendering attributes such as `textAlign`.
+  final Map<String, dynamic> attributes;
 
   /// The current editor selection.
   final EditorSelection selection;
@@ -235,6 +273,7 @@ class _ParagraphWidgetState extends State<ParagraphWidget> {
   Widget build(BuildContext context) {
     final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
     final baseStyle = markdownTheme.paragraphStyle;
+    final textAlign = _textAlignForAttributes(widget.attributes);
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
@@ -245,6 +284,7 @@ class _ParagraphWidgetState extends State<ParagraphWidget> {
             widget.delta,
             baseStyle,
             BlockEditorScope.maybeOf(context)?.variables ?? const {},
+            textAlign,
           );
           widget.onEvent(
             TapEvent(
@@ -254,12 +294,16 @@ class _ParagraphWidgetState extends State<ParagraphWidget> {
             ),
           );
         },
-        child: RichTextRenderer(
-          key: _textKey,
-          delta: widget.delta,
-          blockId: widget.blockId,
-          selection: widget.selection,
-          baseStyle: baseStyle,
+        child: SizedBox(
+          width: double.infinity,
+          child: RichTextRenderer(
+            key: _textKey,
+            delta: widget.delta,
+            blockId: widget.blockId,
+            selection: widget.selection,
+            baseStyle: baseStyle,
+            textAlign: textAlign,
+          ),
         ),
       ),
     );
@@ -274,6 +318,7 @@ class H1Widget extends StatefulWidget {
     required this.blockId,
     required this.delta,
     required this.onEvent,
+    this.attributes = const {},
     this.selection = EditorSelection.none,
   });
 
@@ -285,6 +330,9 @@ class H1Widget extends StatefulWidget {
 
   /// Called when the user interacts with this block.
   final void Function(BlockEvent) onEvent;
+
+  /// Block-level rendering attributes such as `textAlign`.
+  final Map<String, dynamic> attributes;
 
   /// The current editor selection.
   final EditorSelection selection;
@@ -300,6 +348,7 @@ class _H1WidgetState extends State<H1Widget> {
   Widget build(BuildContext context) {
     final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
     final baseStyle = markdownTheme.heading1Style;
+    final textAlign = _textAlignForAttributes(widget.attributes);
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
@@ -310,6 +359,7 @@ class _H1WidgetState extends State<H1Widget> {
             widget.delta,
             baseStyle,
             BlockEditorScope.maybeOf(context)?.variables ?? const {},
+            textAlign,
           );
           widget.onEvent(
             TapEvent(
@@ -319,12 +369,16 @@ class _H1WidgetState extends State<H1Widget> {
             ),
           );
         },
-        child: RichTextRenderer(
-          key: _textKey,
-          delta: widget.delta,
-          blockId: widget.blockId,
-          selection: widget.selection,
-          baseStyle: baseStyle,
+        child: SizedBox(
+          width: double.infinity,
+          child: RichTextRenderer(
+            key: _textKey,
+            delta: widget.delta,
+            blockId: widget.blockId,
+            selection: widget.selection,
+            baseStyle: baseStyle,
+            textAlign: textAlign,
+          ),
         ),
       ),
     );
@@ -339,6 +393,7 @@ class H2Widget extends StatefulWidget {
     required this.blockId,
     required this.delta,
     required this.onEvent,
+    this.attributes = const {},
     this.selection = EditorSelection.none,
   });
 
@@ -350,6 +405,9 @@ class H2Widget extends StatefulWidget {
 
   /// Called when the user interacts with this block.
   final void Function(BlockEvent) onEvent;
+
+  /// Block-level rendering attributes such as `textAlign`.
+  final Map<String, dynamic> attributes;
 
   /// The current editor selection.
   final EditorSelection selection;
@@ -365,6 +423,7 @@ class _H2WidgetState extends State<H2Widget> {
   Widget build(BuildContext context) {
     final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
     final baseStyle = markdownTheme.heading2Style;
+    final textAlign = _textAlignForAttributes(widget.attributes);
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
@@ -375,6 +434,7 @@ class _H2WidgetState extends State<H2Widget> {
             widget.delta,
             baseStyle,
             BlockEditorScope.maybeOf(context)?.variables ?? const {},
+            textAlign,
           );
           widget.onEvent(
             TapEvent(
@@ -384,12 +444,16 @@ class _H2WidgetState extends State<H2Widget> {
             ),
           );
         },
-        child: RichTextRenderer(
-          key: _textKey,
-          delta: widget.delta,
-          blockId: widget.blockId,
-          selection: widget.selection,
-          baseStyle: baseStyle,
+        child: SizedBox(
+          width: double.infinity,
+          child: RichTextRenderer(
+            key: _textKey,
+            delta: widget.delta,
+            blockId: widget.blockId,
+            selection: widget.selection,
+            baseStyle: baseStyle,
+            textAlign: textAlign,
+          ),
         ),
       ),
     );
@@ -404,6 +468,7 @@ class H3Widget extends StatefulWidget {
     required this.blockId,
     required this.delta,
     required this.onEvent,
+    this.attributes = const {},
     this.selection = EditorSelection.none,
   });
 
@@ -415,6 +480,9 @@ class H3Widget extends StatefulWidget {
 
   /// Called when the user interacts with this block.
   final void Function(BlockEvent) onEvent;
+
+  /// Block-level rendering attributes such as `textAlign`.
+  final Map<String, dynamic> attributes;
 
   /// The current editor selection.
   final EditorSelection selection;
@@ -430,6 +498,7 @@ class _H3WidgetState extends State<H3Widget> {
   Widget build(BuildContext context) {
     final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
     final baseStyle = markdownTheme.heading3Style;
+    final textAlign = _textAlignForAttributes(widget.attributes);
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
@@ -440,6 +509,7 @@ class _H3WidgetState extends State<H3Widget> {
             widget.delta,
             baseStyle,
             BlockEditorScope.maybeOf(context)?.variables ?? const {},
+            textAlign,
           );
           widget.onEvent(
             TapEvent(
@@ -449,12 +519,16 @@ class _H3WidgetState extends State<H3Widget> {
             ),
           );
         },
-        child: RichTextRenderer(
-          key: _textKey,
-          delta: widget.delta,
-          blockId: widget.blockId,
-          selection: widget.selection,
-          baseStyle: baseStyle,
+        child: SizedBox(
+          width: double.infinity,
+          child: RichTextRenderer(
+            key: _textKey,
+            delta: widget.delta,
+            blockId: widget.blockId,
+            selection: widget.selection,
+            baseStyle: baseStyle,
+            textAlign: textAlign,
+          ),
         ),
       ),
     );
@@ -469,6 +543,7 @@ class H4Widget extends StatefulWidget {
     required this.blockId,
     required this.delta,
     required this.onEvent,
+    this.attributes = const {},
     this.selection = EditorSelection.none,
   });
 
@@ -480,6 +555,9 @@ class H4Widget extends StatefulWidget {
 
   /// Called when the user interacts with this block.
   final void Function(BlockEvent) onEvent;
+
+  /// Block-level rendering attributes such as `textAlign`.
+  final Map<String, dynamic> attributes;
 
   /// The current editor selection.
   final EditorSelection selection;
@@ -495,6 +573,7 @@ class _H4WidgetState extends State<H4Widget> {
   Widget build(BuildContext context) {
     final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
     final baseStyle = markdownTheme.heading4Style;
+    final textAlign = _textAlignForAttributes(widget.attributes);
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
@@ -505,6 +584,7 @@ class _H4WidgetState extends State<H4Widget> {
             widget.delta,
             baseStyle,
             BlockEditorScope.maybeOf(context)?.variables ?? const {},
+            textAlign,
           );
           widget.onEvent(
             TapEvent(
@@ -514,12 +594,16 @@ class _H4WidgetState extends State<H4Widget> {
             ),
           );
         },
-        child: RichTextRenderer(
-          key: _textKey,
-          delta: widget.delta,
-          blockId: widget.blockId,
-          selection: widget.selection,
-          baseStyle: baseStyle,
+        child: SizedBox(
+          width: double.infinity,
+          child: RichTextRenderer(
+            key: _textKey,
+            delta: widget.delta,
+            blockId: widget.blockId,
+            selection: widget.selection,
+            baseStyle: baseStyle,
+            textAlign: textAlign,
+          ),
         ),
       ),
     );
@@ -534,6 +618,7 @@ class H5Widget extends StatefulWidget {
     required this.blockId,
     required this.delta,
     required this.onEvent,
+    this.attributes = const {},
     this.selection = EditorSelection.none,
   });
 
@@ -545,6 +630,9 @@ class H5Widget extends StatefulWidget {
 
   /// Called when the user interacts with this block.
   final void Function(BlockEvent) onEvent;
+
+  /// Block-level rendering attributes such as `textAlign`.
+  final Map<String, dynamic> attributes;
 
   /// The current editor selection.
   final EditorSelection selection;
@@ -560,6 +648,7 @@ class _H5WidgetState extends State<H5Widget> {
   Widget build(BuildContext context) {
     final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
     final baseStyle = markdownTheme.heading5Style;
+    final textAlign = _textAlignForAttributes(widget.attributes);
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
@@ -570,6 +659,7 @@ class _H5WidgetState extends State<H5Widget> {
             widget.delta,
             baseStyle,
             BlockEditorScope.maybeOf(context)?.variables ?? const {},
+            textAlign,
           );
           widget.onEvent(
             TapEvent(
@@ -579,12 +669,16 @@ class _H5WidgetState extends State<H5Widget> {
             ),
           );
         },
-        child: RichTextRenderer(
-          key: _textKey,
-          delta: widget.delta,
-          blockId: widget.blockId,
-          selection: widget.selection,
-          baseStyle: baseStyle,
+        child: SizedBox(
+          width: double.infinity,
+          child: RichTextRenderer(
+            key: _textKey,
+            delta: widget.delta,
+            blockId: widget.blockId,
+            selection: widget.selection,
+            baseStyle: baseStyle,
+            textAlign: textAlign,
+          ),
         ),
       ),
     );
@@ -599,6 +693,7 @@ class H6Widget extends StatefulWidget {
     required this.blockId,
     required this.delta,
     required this.onEvent,
+    this.attributes = const {},
     this.selection = EditorSelection.none,
   });
 
@@ -610,6 +705,9 @@ class H6Widget extends StatefulWidget {
 
   /// Called when the user interacts with this block.
   final void Function(BlockEvent) onEvent;
+
+  /// Block-level rendering attributes such as `textAlign`.
+  final Map<String, dynamic> attributes;
 
   /// The current editor selection.
   final EditorSelection selection;
@@ -625,6 +723,7 @@ class _H6WidgetState extends State<H6Widget> {
   Widget build(BuildContext context) {
     final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
     final baseStyle = markdownTheme.heading6Style;
+    final textAlign = _textAlignForAttributes(widget.attributes);
     return MouseRegion(
       cursor: SystemMouseCursors.text,
       child: GestureDetector(
@@ -635,6 +734,7 @@ class _H6WidgetState extends State<H6Widget> {
             widget.delta,
             baseStyle,
             BlockEditorScope.maybeOf(context)?.variables ?? const {},
+            textAlign,
           );
           widget.onEvent(
             TapEvent(
@@ -644,12 +744,16 @@ class _H6WidgetState extends State<H6Widget> {
             ),
           );
         },
-        child: RichTextRenderer(
-          key: _textKey,
-          delta: widget.delta,
-          blockId: widget.blockId,
-          selection: widget.selection,
-          baseStyle: baseStyle,
+        child: SizedBox(
+          width: double.infinity,
+          child: RichTextRenderer(
+            key: _textKey,
+            delta: widget.delta,
+            blockId: widget.blockId,
+            selection: widget.selection,
+            baseStyle: baseStyle,
+            textAlign: textAlign,
+          ),
         ),
       ),
     );
@@ -1436,7 +1540,9 @@ class _PreviewSourceBlockState extends State<_PreviewSourceBlock> {
         border: Border.all(color: markdownTheme.codeBlockBorder),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+        padding: markdownTheme.scaleSurfaceInsets(
+          const EdgeInsets.fromLTRB(14, 10, 14, 14),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1454,9 +1560,8 @@ class _PreviewSourceBlockState extends State<_PreviewSourceBlock> {
                   borderRadius: BorderRadius.circular(editorTheme.radiusSm),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 3,
+                  padding: markdownTheme.scaleSurfaceInsets(
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   ),
                   child: Text(
                     widget.label,
@@ -1468,7 +1573,7 @@ class _PreviewSourceBlockState extends State<_PreviewSourceBlock> {
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: markdownTheme.scaleSurfaceDimension(8)),
             AnimatedSize(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOutCubic,
@@ -1502,7 +1607,9 @@ class _PreviewSourceBlockState extends State<_PreviewSourceBlock> {
                               ),
                             ),
                             child: Padding(
-                              padding: const EdgeInsets.all(10),
+                              padding: markdownTheme.scaleSurfaceInsets(
+                                const EdgeInsets.all(10),
+                              ),
                               child: sourceEditor(
                                 style: textStyle,
                                 showCursor: true,
@@ -1523,7 +1630,9 @@ class _PreviewSourceBlockState extends State<_PreviewSourceBlock> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               editor,
-                              const SizedBox(height: 10),
+                              SizedBox(
+                                height: markdownTheme.scaleSurfaceDimension(10),
+                              ),
                               boundedPreview,
                             ],
                           );
@@ -2174,7 +2283,7 @@ class _MermaidPreview extends StatelessWidget {
         borderRadius: BorderRadius.circular(editorTheme.radiusSm),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: markdownTheme.scaleSurfaceInsets(const EdgeInsets.all(12)),
         child: diagram == null
             ? _MermaidSourceFallback(source: source, style: style)
             : LayoutBuilder(
@@ -3118,11 +3227,15 @@ class _RawMarkdownWidgetState extends State<RawMarkdownWidget> {
         border: Border.all(color: markdownTheme.codeBlockBorder),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        padding: markdownTheme.scaleSurfaceInsets(
+          const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        ),
         child: Stack(
           children: [
             Padding(
-              padding: const EdgeInsets.only(top: 24),
+              padding: EdgeInsets.only(
+                top: markdownTheme.scaleSurfaceDimension(24),
+              ),
               child: readOnly
                   ? SelectableText(_source, style: textStyle)
                   : Material(
@@ -3161,9 +3274,8 @@ class _RawMarkdownWidgetState extends State<RawMarkdownWidget> {
                   borderRadius: BorderRadius.circular(editorTheme.radiusSm),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 3,
+                  padding: markdownTheme.scaleSurfaceInsets(
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   ),
                   child: Text(
                     'markdown',
@@ -3182,6 +3294,53 @@ class _RawMarkdownWidgetState extends State<RawMarkdownWidget> {
   }
 }
 
+enum _TableCellNavigationDirection { previous, next, up, down }
+
+enum _TableCellCaretPlacement {
+  start,
+  end,
+  preserveColumnFromStart,
+  preserveColumnFromEnd,
+}
+
+final class _TableCellNavigationIntent {
+  const _TableCellNavigationIntent({
+    required this.header,
+    required this.rowIndex,
+    required this.columnIndex,
+    required this.direction,
+    required this.placement,
+    this.preferredColumn,
+    this.insertRowAtEnd = false,
+  });
+
+  final bool header;
+  final int rowIndex;
+  final int columnIndex;
+  final _TableCellNavigationDirection direction;
+  final _TableCellCaretPlacement placement;
+  final int? preferredColumn;
+  final bool insertRowAtEnd;
+}
+
+final class _ResolvedTableCellNavigation {
+  const _ResolvedTableCellNavigation({
+    required this.header,
+    required this.rowIndex,
+    required this.columnIndex,
+    required this.placement,
+    required this.preferredColumn,
+    this.insertRowAtEnd = false,
+  });
+
+  final bool header;
+  final int rowIndex;
+  final int columnIndex;
+  final _TableCellCaretPlacement placement;
+  final int? preferredColumn;
+  final bool insertRowAtEnd;
+}
+
 /// A GitHub-style Markdown table block.
 class TableWidget extends StatefulWidget {
   /// Creates a [TableWidget] for the block identified by [blockId].
@@ -3192,6 +3351,7 @@ class TableWidget extends StatefulWidget {
     required this.rows,
     required this.alignments,
     required this.onEvent,
+    this.attributes = const {},
   });
 
   /// The id of the block this widget represents.
@@ -3205,6 +3365,9 @@ class TableWidget extends StatefulWidget {
 
   /// Optional per-column alignment values: left, center, or right.
   final List<String> alignments;
+
+  /// Block-level rendering attributes such as `textAlign`.
+  final Map<String, dynamic> attributes;
 
   /// Called when the user interacts with this block.
   final void Function(BlockEvent) onEvent;
@@ -3230,6 +3393,7 @@ class _TableWidgetState extends State<TableWidget> {
   final GlobalKey _tableShellKey = GlobalKey();
   final Map<int, GlobalKey> _headerCellKeys = {};
   final Map<int, GlobalKey> _rowCellKeys = {};
+  final Map<String, GlobalKey<_TableCellContentState>> _cellStateKeys = {};
   final Map<int, double> _columnWidths = {};
   final Map<int, double> _rowMinHeights = {};
   int? _activeRowIndex;
@@ -3245,8 +3409,15 @@ class _TableWidgetState extends State<TableWidget> {
   List<String>? _optimisticAlignments;
 
   @override
+  void initState() {
+    super.initState();
+    _syncDimensionAttributes();
+  }
+
+  @override
   void didUpdateWidget(covariant TableWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _syncDimensionAttributes();
     if (!_hasOptimisticTable) return;
     final widgetChanged =
         !_sameStringList(widget.headers, oldWidget.headers) ||
@@ -3257,6 +3428,31 @@ class _TableWidgetState extends State<TableWidget> {
       _optimisticRows = null;
       _optimisticAlignments = null;
     }
+  }
+
+  void _syncDimensionAttributes() {
+    _replaceDimensions(
+      _columnWidths,
+      _dimensionMapFromAttribute(
+        widget.attributes['tableColumnWidths'],
+        min: _minColumnWidth,
+        max: _maxColumnWidth,
+      ),
+    );
+    _replaceDimensions(
+      _rowMinHeights,
+      _dimensionMapFromAttribute(
+        widget.attributes['tableRowHeights'],
+        min: _minRowHeight,
+        max: _maxRowHeight,
+      ),
+    );
+  }
+
+  void _replaceDimensions(Map<int, double> target, Map<int, double> source) {
+    target
+      ..clear()
+      ..addAll(source);
   }
 
   @override
@@ -3283,10 +3479,10 @@ class _TableWidgetState extends State<TableWidget> {
     }
 
     return Align(
-      alignment: AlignmentDirectional.centerStart,
+      alignment: _blockAlignmentForAttributes(widget.attributes),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: _crossAxisAlignmentForAttributes(widget.attributes),
         children: [
           MouseRegion(
             cursor: readOnly
@@ -3452,6 +3648,128 @@ class _TableWidgetState extends State<TableWidget> {
     _scheduleControlAnchorUpdate(nextRow, nextColumn);
   }
 
+  void _handleCellNavigation(_TableCellNavigationIntent intent) {
+    final headers = _currentHeaders();
+    final rows = _currentRows(headers.length);
+    final columnCount = headers.length;
+    final rowCount = rows.length;
+    if (columnCount <= 0) return;
+
+    final target = _resolveNavigationTarget(
+      intent,
+      rowCount: rowCount,
+      columnCount: columnCount,
+    );
+    if (target == null) return;
+
+    if (target.insertRowAtEnd) {
+      _emitTableAction(
+        TableRowInsertedEvent(blockId: widget.blockId, index: rowCount),
+        nextRowIndex: rowCount,
+        nextColumnIndex: target.columnIndex,
+      );
+      _focusCellAfterFrame(
+        header: false,
+        rowIndex: rowCount,
+        columnIndex: target.columnIndex,
+        placement: target.placement,
+        preferredColumn: target.preferredColumn,
+      );
+      return;
+    }
+
+    final nextRow = target.header ? null : target.rowIndex;
+    setState(() {
+      _activeRowIndex = nextRow;
+      _activeColumnIndex = target.columnIndex;
+      _showRowControls = !target.header;
+      _hoveringTable = true;
+    });
+    _scheduleControlAnchorUpdate(nextRow, target.columnIndex);
+    _focusCellAfterFrame(
+      header: target.header,
+      rowIndex: target.rowIndex,
+      columnIndex: target.columnIndex,
+      placement: target.placement,
+      preferredColumn: target.preferredColumn,
+    );
+  }
+
+  _ResolvedTableCellNavigation? _resolveNavigationTarget(
+    _TableCellNavigationIntent intent, {
+    required int rowCount,
+    required int columnCount,
+  }) {
+    final sourceOrdinal = intent.header ? 0 : intent.rowIndex + 1;
+    final totalOrdinals = rowCount + 1;
+    var targetOrdinal = sourceOrdinal;
+    var targetColumn = intent.columnIndex;
+
+    switch (intent.direction) {
+      case _TableCellNavigationDirection.previous:
+        if (targetColumn > 0) {
+          targetColumn--;
+        } else if (targetOrdinal > 0) {
+          targetOrdinal--;
+          targetColumn = columnCount - 1;
+        } else {
+          return null;
+        }
+      case _TableCellNavigationDirection.next:
+        if (targetColumn < columnCount - 1) {
+          targetColumn++;
+        } else if (targetOrdinal < totalOrdinals - 1) {
+          targetOrdinal++;
+          targetColumn = 0;
+        } else if (intent.insertRowAtEnd) {
+          return _ResolvedTableCellNavigation(
+            header: false,
+            rowIndex: rowCount,
+            columnIndex: 0,
+            placement: intent.placement,
+            preferredColumn: intent.preferredColumn,
+            insertRowAtEnd: true,
+          );
+        } else {
+          return null;
+        }
+      case _TableCellNavigationDirection.up:
+        if (targetOrdinal <= 0) return null;
+        targetOrdinal--;
+      case _TableCellNavigationDirection.down:
+        if (targetOrdinal >= totalOrdinals - 1) return null;
+        targetOrdinal++;
+    }
+
+    return _ResolvedTableCellNavigation(
+      header: targetOrdinal == 0,
+      rowIndex: targetOrdinal == 0 ? -1 : targetOrdinal - 1,
+      columnIndex: targetColumn,
+      placement: intent.placement,
+      preferredColumn: intent.preferredColumn,
+    );
+  }
+
+  void _focusCellAfterFrame({
+    required bool header,
+    required int rowIndex,
+    required int columnIndex,
+    required _TableCellCaretPlacement placement,
+    required int? preferredColumn,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _cellStateKey(
+        header: header,
+        rowIndex: rowIndex,
+        columnIndex: columnIndex,
+      ).currentState?.focusFromKeyboard(
+        placement: placement,
+        preferredColumn: preferredColumn,
+      );
+    });
+  }
+
   void _clearHoverControls() {
     if (!_hoveringTable &&
         _activeRowIndex == null &&
@@ -3482,6 +3800,18 @@ class _TableWidgetState extends State<TableWidget> {
     _scheduleControlAnchorUpdate(_activeRowIndex, _activeColumnIndex);
   }
 
+  void _commitColumnResize(int column) {
+    final width = _columnWidths[column];
+    if (width == null) return;
+    widget.onEvent(
+      TableColumnResizedEvent(
+        blockId: widget.blockId,
+        columnIndex: column,
+        width: _stableDimension(width),
+      ),
+    );
+  }
+
   void _resizeRow(int row, double delta) {
     if (delta == 0) return;
     final current = _rowMinHeights[row] ?? _measuredRowHeight(row);
@@ -3491,6 +3821,18 @@ class _TableWidgetState extends State<TableWidget> {
           .toDouble();
     });
     _scheduleControlAnchorUpdate(_activeRowIndex, _activeColumnIndex);
+  }
+
+  void _commitRowResize(int row) {
+    final height = _rowMinHeights[row];
+    if (height == null) return;
+    widget.onEvent(
+      TableRowResizedEvent(
+        blockId: widget.blockId,
+        rowIndex: row,
+        height: _stableDimension(height),
+      ),
+    );
   }
 
   double _measuredColumnWidth(int column) {
@@ -3527,11 +3869,14 @@ class _TableWidgetState extends State<TableWidget> {
     final baseStyle = header
         ? markdownTheme.tableHeaderStyle
         : markdownTheme.tableCellStyle;
+    final defaultRowMinHeight = markdownTheme.scaleSurfaceDimension(
+      _defaultRowMinHeight,
+    );
     final rowMinHeight = header
-        ? _defaultRowMinHeight
+        ? defaultRowMinHeight
         : math.max(
-            _rowMinHeights[rowIndex] ?? _defaultRowMinHeight,
-            _estimatedRowHeight(cells, baseStyle),
+            _rowMinHeights[rowIndex] ?? defaultRowMinHeight,
+            _estimatedRowHeight(cells, baseStyle, markdownTheme),
           );
     return TableRow(
       decoration: BoxDecoration(
@@ -3540,8 +3885,10 @@ class _TableWidgetState extends State<TableWidget> {
       children: [
         for (var column = 0; column < columnCount; column++)
           _TableCellContent(
-            key: ValueKey(
-              '${widget.blockId}:table:$_structureVersion:${header ? 'h' : 'r'}:$rowIndex:$column',
+            key: _cellStateKey(
+              header: header,
+              rowIndex: rowIndex,
+              columnIndex: column,
             ),
             cellKey: header
                 ? _headerCellKey(column)
@@ -3564,9 +3911,11 @@ class _TableWidgetState extends State<TableWidget> {
             showColumnResizeHandle: !readOnly,
             showRowResizeHandle: !readOnly && !header,
             onColumnResizeDelta: (delta) => _resizeColumn(column, delta),
+            onColumnResizeEnd: () => _commitColumnResize(column),
             onRowResizeDelta: !header
                 ? (delta) => _resizeRow(rowIndex, delta)
                 : null,
+            onRowResizeEnd: !header ? () => _commitRowResize(rowIndex) : null,
             onActivate: () => _activateCell(
               rowIndex: rowIndex,
               columnIndex: column,
@@ -3581,13 +3930,18 @@ class _TableWidgetState extends State<TableWidget> {
               columnCount: columnCount,
               fromHover: true,
             ),
+            onNavigate: _handleCellNavigation,
             onEvent: widget.onEvent,
           ),
       ],
     );
   }
 
-  double _estimatedRowHeight(List<String> cells, TextStyle style) {
+  double _estimatedRowHeight(
+    List<String> cells,
+    TextStyle style,
+    MarkdownDocumentThemeData markdownTheme,
+  ) {
     final lineHeight = _textLineHeight(style);
     var maxLines = 1;
     for (final cell in cells) {
@@ -3597,7 +3951,7 @@ class _TableWidgetState extends State<TableWidget> {
       );
       maxLines = math.max(maxLines, '\n'.allMatches(normalized).length + 1);
     }
-    return lineHeight * maxLines + 18;
+    return lineHeight * maxLines + markdownTheme.scaleSurfaceDimension(18);
   }
 
   List<Widget> _buildControlOverlays({
@@ -3702,12 +4056,14 @@ class _TableWidgetState extends State<TableWidget> {
     required int? nextColumnIndex,
   }) {
     final optimisticTable = _optimisticTableAfter(event);
+    _optimisticallyApplyDimensionChange(event);
     setState(() {
       if (optimisticTable != null) {
         _optimisticHeaders = optimisticTable.headers;
         _optimisticRows = optimisticTable.rows;
         _optimisticAlignments = optimisticTable.alignments;
         _structureVersion++;
+        _cellStateKeys.clear();
       }
       _activeRowIndex = nextRowIndex;
       _activeColumnIndex = nextColumnIndex;
@@ -3715,6 +4071,21 @@ class _TableWidgetState extends State<TableWidget> {
     });
     _scheduleControlAnchorUpdate(nextRowIndex, nextColumnIndex);
     widget.onEvent(event);
+  }
+
+  void _optimisticallyApplyDimensionChange(BlockEvent event) {
+    switch (event) {
+      case TableColumnInsertedEvent():
+        _shiftDimensionMapForInsert(_columnWidths, event.index);
+      case TableColumnDeletedEvent():
+        _shiftDimensionMapForDelete(_columnWidths, event.index);
+      case TableRowInsertedEvent():
+        _shiftDimensionMapForInsert(_rowMinHeights, event.index);
+      case TableRowDeletedEvent():
+        _shiftDimensionMapForDelete(_rowMinHeights, event.index);
+      default:
+        break;
+    }
   }
 
   ({List<String> headers, List<List<String>> rows, List<String> alignments})?
@@ -3776,6 +4147,19 @@ class _TableWidgetState extends State<TableWidget> {
 
   GlobalKey _rowCellKey(int row) =>
       _rowCellKeys.putIfAbsent(row, GlobalKey.new);
+
+  GlobalKey<_TableCellContentState> _cellStateKey({
+    required bool header,
+    required int rowIndex,
+    required int columnIndex,
+  }) {
+    final key =
+        '$_structureVersion:${header ? 'h' : 'r'}:$rowIndex:$columnIndex';
+    return _cellStateKeys.putIfAbsent(
+      key,
+      GlobalKey<_TableCellContentState>.new,
+    );
+  }
 
   bool get _hasOptimisticTable =>
       _optimisticHeaders != null ||
@@ -3869,6 +4253,54 @@ class _TableWidgetState extends State<TableWidget> {
     return true;
   }
 
+  Map<int, double> _dimensionMapFromAttribute(
+    Object? raw, {
+    required double min,
+    required double max,
+  }) {
+    if (raw is! Map) return const {};
+    final result = <int, double>{};
+    for (final entry in raw.entries) {
+      final index = int.tryParse(entry.key.toString());
+      final dimension = _parseDimension(entry.value);
+      if (index == null || dimension == null || !dimension.isFinite) continue;
+      result[index] = dimension.clamp(min, max).toDouble();
+    }
+    return result;
+  }
+
+  double? _parseDimension(Object? value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
+  }
+
+  double _stableDimension(double value) {
+    return (value * 10).roundToDouble() / 10;
+  }
+
+  void _shiftDimensionMapForInsert(Map<int, double> dimensions, int index) {
+    if (dimensions.isEmpty) return;
+    final shifted = <int, double>{};
+    for (final entry in dimensions.entries) {
+      shifted[entry.key >= index ? entry.key + 1 : entry.key] = entry.value;
+    }
+    dimensions
+      ..clear()
+      ..addAll(shifted);
+  }
+
+  void _shiftDimensionMapForDelete(Map<int, double> dimensions, int index) {
+    if (dimensions.isEmpty) return;
+    final shifted = <int, double>{};
+    for (final entry in dimensions.entries) {
+      if (entry.key == index) continue;
+      shifted[entry.key > index ? entry.key - 1 : entry.key] = entry.value;
+    }
+    dimensions
+      ..clear()
+      ..addAll(shifted);
+  }
+
   List<String> _normalizeRow(List<String> row, int columnCount) {
     if (row.length == columnCount) return row;
     if (row.length > columnCount) return row.sublist(0, columnCount);
@@ -3894,9 +4326,12 @@ class _TableCellContent extends StatefulWidget {
     required this.showColumnResizeHandle,
     required this.showRowResizeHandle,
     required this.onColumnResizeDelta,
+    required this.onColumnResizeEnd,
     required this.onRowResizeDelta,
+    required this.onRowResizeEnd,
     required this.onActivate,
     required this.onHover,
+    required this.onNavigate,
     required this.onEvent,
   });
 
@@ -3915,9 +4350,12 @@ class _TableCellContent extends StatefulWidget {
   final bool showColumnResizeHandle;
   final bool showRowResizeHandle;
   final ValueChanged<double> onColumnResizeDelta;
+  final VoidCallback onColumnResizeEnd;
   final ValueChanged<double>? onRowResizeDelta;
+  final VoidCallback? onRowResizeEnd;
   final VoidCallback onActivate;
   final VoidCallback onHover;
+  final ValueChanged<_TableCellNavigationIntent> onNavigate;
   final void Function(BlockEvent) onEvent;
 
   @override
@@ -3943,10 +4381,7 @@ class _TableCellContentState extends State<_TableCellContent> {
       text: widget.text,
       hideSyntaxMarkers: true,
     );
-    _focusNode = FocusNode(
-      onKeyEvent: (_, event) =>
-          handleEmbeddedTextEditingShortcut(_controller, event),
-    );
+    _focusNode = FocusNode(onKeyEvent: _handleCellKeyEvent);
     _focusNode.addListener(_handleFocusChanged);
   }
 
@@ -3990,6 +4425,26 @@ class _TableCellContentState extends State<_TableCellContent> {
     });
   }
 
+  void focusFromKeyboard({
+    required _TableCellCaretPlacement placement,
+    required int? preferredColumn,
+  }) {
+    widget.onActivate();
+    if (widget.readOnly) return;
+    if (!_editing && mounted) {
+      setState(() => _editing = true);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_focusNode.hasFocus) {
+        _focusNode.requestFocus();
+      }
+      _controller.selection = TextSelection.collapsed(
+        offset: _offsetForPlacement(placement, preferredColumn),
+      );
+    });
+  }
+
   @override
   void didUpdateWidget(_TableCellContent oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -4013,6 +4468,197 @@ class _TableCellContentState extends State<_TableCellContent> {
     return text.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
   }
 
+  void _emitCellChanged(String value) {
+    widget.onEvent(
+      TableCellChangedEvent(
+        blockId: widget.tableBlockId,
+        header: widget.header,
+        rowIndex: widget.rowIndex,
+        columnIndex: widget.columnIndex,
+        text: value,
+      ),
+    );
+  }
+
+  KeyEventResult _handleCellKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      final result = _handleTableNavigationKey(event);
+      if (result == KeyEventResult.handled) return result;
+    }
+    return handleEmbeddedTextEditingShortcut(
+      _controller,
+      event,
+      markdownFormatting: true,
+      onTextChanged: _emitCellChanged,
+    );
+  }
+
+  KeyEventResult _handleTableNavigationKey(KeyEvent event) {
+    final hardware = HardwareKeyboard.instance;
+    final metaPressed = hardware.isMetaPressed;
+    final controlPressed = hardware.isControlPressed;
+    final altPressed = hardware.isAltPressed;
+    final shiftPressed = hardware.isShiftPressed;
+    final key = event.logicalKey;
+
+    if (!metaPressed &&
+        !controlPressed &&
+        !altPressed &&
+        key == LogicalKeyboardKey.tab) {
+      widget.onNavigate(
+        _navigationIntent(
+          direction: shiftPressed
+              ? _TableCellNavigationDirection.previous
+              : _TableCellNavigationDirection.next,
+          placement: shiftPressed
+              ? _TableCellCaretPlacement.end
+              : _TableCellCaretPlacement.start,
+          insertRowAtEnd: !shiftPressed,
+        ),
+      );
+      return KeyEventResult.handled;
+    }
+
+    if (!metaPressed &&
+        !controlPressed &&
+        !altPressed &&
+        (key == LogicalKeyboardKey.enter ||
+            key == LogicalKeyboardKey.numpadEnter)) {
+      _insertCellLineBreak();
+      return KeyEventResult.handled;
+    }
+
+    if (metaPressed || controlPressed || altPressed || shiftPressed) {
+      return KeyEventResult.ignored;
+    }
+
+    final selection = _controller.selection;
+    if (!selection.isValid || !selection.isCollapsed) {
+      return KeyEventResult.ignored;
+    }
+    final text = _controller.text;
+    final offset = selection.extentOffset.clamp(0, text.length);
+
+    if (key == LogicalKeyboardKey.arrowLeft && offset == 0) {
+      widget.onNavigate(
+        _navigationIntent(
+          direction: _TableCellNavigationDirection.previous,
+          placement: _TableCellCaretPlacement.end,
+        ),
+      );
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight && offset == text.length) {
+      widget.onNavigate(
+        _navigationIntent(
+          direction: _TableCellNavigationDirection.next,
+          placement: _TableCellCaretPlacement.start,
+        ),
+      );
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowUp &&
+        _lineStartOffset(text, offset) == 0) {
+      widget.onNavigate(
+        _navigationIntent(
+          direction: _TableCellNavigationDirection.up,
+          placement: _TableCellCaretPlacement.preserveColumnFromEnd,
+          preferredColumn: _columnForOffset(text, offset),
+        ),
+      );
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowDown &&
+        _lineEndOffset(text, offset) == text.length) {
+      widget.onNavigate(
+        _navigationIntent(
+          direction: _TableCellNavigationDirection.down,
+          placement: _TableCellCaretPlacement.preserveColumnFromStart,
+          preferredColumn: _columnForOffset(text, offset),
+        ),
+      );
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  _TableCellNavigationIntent _navigationIntent({
+    required _TableCellNavigationDirection direction,
+    required _TableCellCaretPlacement placement,
+    int? preferredColumn,
+    bool insertRowAtEnd = false,
+  }) {
+    return _TableCellNavigationIntent(
+      header: widget.header,
+      rowIndex: widget.rowIndex,
+      columnIndex: widget.columnIndex,
+      direction: direction,
+      placement: placement,
+      preferredColumn: preferredColumn,
+      insertRowAtEnd: insertRowAtEnd,
+    );
+  }
+
+  void _insertCellLineBreak() {
+    final value = _controller.value;
+    final text = value.text;
+    final selection = value.selection;
+    if (!selection.isValid) return;
+    final start = selection.start.clamp(0, text.length);
+    final end = selection.end.clamp(0, text.length);
+    final nextText = text.replaceRange(start, end, '\n');
+    _controller.value = value.copyWith(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: start + 1),
+      composing: TextRange.empty,
+    );
+    _emitCellChanged(nextText);
+  }
+
+  int _offsetForPlacement(
+    _TableCellCaretPlacement placement,
+    int? preferredColumn,
+  ) {
+    final text = _controller.text;
+    return switch (placement) {
+      _TableCellCaretPlacement.start => 0,
+      _TableCellCaretPlacement.end => text.length,
+      _TableCellCaretPlacement.preserveColumnFromStart => _offsetInFirstLine(
+        text,
+        preferredColumn ?? 0,
+      ),
+      _TableCellCaretPlacement.preserveColumnFromEnd => _offsetInLastLine(
+        text,
+        preferredColumn ?? 0,
+      ),
+    };
+  }
+
+  int _columnForOffset(String text, int offset) {
+    return offset - _lineStartOffset(text, offset);
+  }
+
+  int _lineStartOffset(String text, int offset) {
+    if (offset <= 0) return 0;
+    return text.lastIndexOf('\n', offset - 1) + 1;
+  }
+
+  int _lineEndOffset(String text, int offset) {
+    final index = text.indexOf('\n', offset.clamp(0, text.length));
+    return index == -1 ? text.length : index;
+  }
+
+  int _offsetInFirstLine(String text, int column) {
+    final lineEnd = _lineEndOffset(text, 0);
+    return column.clamp(0, lineEnd).toInt();
+  }
+
+  int _offsetInLastLine(String text, int column) {
+    final lineStart = _lineStartOffset(text, text.length);
+    return (lineStart + column).clamp(lineStart, text.length).toInt();
+  }
+
   @override
   Widget build(BuildContext context) {
     final editorTheme = BlockEditorThemeData.fromContext(context);
@@ -4033,6 +4679,15 @@ class _TableCellContentState extends State<_TableCellContent> {
     );
     final activeCellBackground = markdownTheme.tableActiveCellBackground;
     final cursorColor = _effectiveCursorColor(context, editorTheme);
+    final previewPadding = markdownTheme.scaleSurfaceInsets(
+      const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+    );
+    final editPadding = markdownTheme.scaleSurfaceInsets(
+      const EdgeInsets.only(left: 12, right: 12, top: 3, bottom: 3),
+    );
+    final inputPadding = markdownTheme.scaleSurfaceInsets(
+      const EdgeInsets.symmetric(vertical: 6),
+    );
 
     if (widget.readOnly) {
       return MouseRegion(
@@ -4053,10 +4708,7 @@ class _TableCellContentState extends State<_TableCellContent> {
                 clipBehavior: Clip.none,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 9,
-                    ),
+                    padding: previewPadding,
                     child: RichTextRenderer(
                       delta: BlockMarkdownCodec.parseInline(renderableText),
                       blockId: widget.blockId,
@@ -4066,16 +4718,20 @@ class _TableCellContentState extends State<_TableCellContent> {
                   ),
                   if (widget.showColumnResizeHandle)
                     _TableCellResizeHandle(
+                      key: ValueKey('${widget.blockId}-column-resize'),
                       axis: Axis.horizontal,
                       active: widget.active,
                       onDragDelta: widget.onColumnResizeDelta,
+                      onDragEnd: widget.onColumnResizeEnd,
                     ),
                   if (widget.showRowResizeHandle &&
                       widget.onRowResizeDelta != null)
                     _TableCellResizeHandle(
+                      key: ValueKey('${widget.blockId}-row-resize'),
                       axis: Axis.vertical,
                       active: widget.active,
                       onDragDelta: widget.onRowResizeDelta!,
+                      onDragEnd: widget.onRowResizeEnd,
                     ),
                 ],
               ),
@@ -4103,10 +4759,7 @@ class _TableCellContentState extends State<_TableCellContent> {
                 clipBehavior: Clip.none,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 9,
-                    ),
+                    padding: previewPadding,
                     child: RichTextRenderer(
                       delta: BlockMarkdownCodec.parseInline(renderableText),
                       blockId: widget.blockId,
@@ -4116,16 +4769,20 @@ class _TableCellContentState extends State<_TableCellContent> {
                   ),
                   if (widget.showColumnResizeHandle)
                     _TableCellResizeHandle(
+                      key: ValueKey('${widget.blockId}-column-resize'),
                       axis: Axis.horizontal,
                       active: widget.active,
                       onDragDelta: widget.onColumnResizeDelta,
+                      onDragEnd: widget.onColumnResizeEnd,
                     ),
                   if (widget.showRowResizeHandle &&
                       widget.onRowResizeDelta != null)
                     _TableCellResizeHandle(
+                      key: ValueKey('${widget.blockId}-row-resize'),
                       axis: Axis.vertical,
                       active: widget.active,
                       onDragDelta: widget.onRowResizeDelta!,
+                      onDragEnd: widget.onRowResizeEnd,
                     ),
                 ],
               ),
@@ -4152,12 +4809,7 @@ class _TableCellContentState extends State<_TableCellContent> {
               clipBehavior: Clip.none,
               children: [
                 Padding(
-                  padding: const EdgeInsets.only(
-                    left: 12,
-                    right: 12,
-                    top: 3,
-                    bottom: 3,
-                  ),
+                  padding: editPadding,
                   child: Material(
                     color: Colors.transparent,
                     child: Stack(
@@ -4183,9 +4835,7 @@ class _TableCellContentState extends State<_TableCellContent> {
                                 : Colors.transparent,
                             onTap: widget.onActivate,
                             decoration: _embeddedTextFieldDecoration(
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 6,
-                              ),
+                              contentPadding: inputPadding,
                               hintText: widget.header
                                   ? 'Column ${widget.columnIndex + 1}'
                                   : '',
@@ -4195,15 +4845,7 @@ class _TableCellContentState extends State<_TableCellContent> {
                                       color: Colors.transparent,
                                     ),
                             ),
-                            onChanged: (value) => widget.onEvent(
-                              TableCellChangedEvent(
-                                blockId: widget.tableBlockId,
-                                header: widget.header,
-                                rowIndex: widget.rowIndex,
-                                columnIndex: widget.columnIndex,
-                                text: value,
-                              ),
-                            ),
+                            onChanged: _emitCellChanged,
                           ),
                         ),
                       ],
@@ -4212,16 +4854,20 @@ class _TableCellContentState extends State<_TableCellContent> {
                 ),
                 if (widget.showColumnResizeHandle)
                   _TableCellResizeHandle(
+                    key: ValueKey('${widget.blockId}-column-resize'),
                     axis: Axis.horizontal,
                     active: widget.active,
                     onDragDelta: widget.onColumnResizeDelta,
+                    onDragEnd: widget.onColumnResizeEnd,
                   ),
                 if (widget.showRowResizeHandle &&
                     widget.onRowResizeDelta != null)
                   _TableCellResizeHandle(
+                    key: ValueKey('${widget.blockId}-row-resize'),
                     axis: Axis.vertical,
                     active: widget.active,
                     onDragDelta: widget.onRowResizeDelta!,
+                    onDragEnd: widget.onRowResizeEnd,
                   ),
               ],
             ),
@@ -4234,14 +4880,17 @@ class _TableCellContentState extends State<_TableCellContent> {
 
 class _TableCellResizeHandle extends StatefulWidget {
   const _TableCellResizeHandle({
+    super.key,
     required this.axis,
     required this.active,
     required this.onDragDelta,
+    this.onDragEnd,
   });
 
   final Axis axis;
   final bool active;
   final ValueChanged<double> onDragDelta;
+  final VoidCallback? onDragEnd;
 
   @override
   State<_TableCellResizeHandle> createState() => _TableCellResizeHandleState();
@@ -4275,8 +4924,10 @@ class _TableCellResizeHandleState extends State<_TableCellResizeHandle> {
   }
 
   void _endDrag([Object? _]) {
+    final wasDragging = _dragging;
     _dragging = false;
     _lastDragPosition = null;
+    if (wasDragging) widget.onDragEnd?.call();
   }
 
   Widget _ignoreScrollAndResizeOnlyOnPrimaryDrag(Widget child) {

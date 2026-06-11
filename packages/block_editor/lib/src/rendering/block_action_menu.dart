@@ -45,10 +45,12 @@ class BlockActionMenu extends StatefulWidget {
 
 class _BlockActionMenuState extends State<BlockActionMenu> {
   bool _showTurnInto = false;
+  bool _showAlign = false;
   late final FocusNode _focusNode;
 
   static const double _menuWidth = 200.0;
   static const double _turnIntoWidth = 200.0;
+  static const double _alignWidth = 172.0;
 
   @override
   void initState() {
@@ -147,6 +149,29 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
     widget.onDismiss();
   }
 
+  void _alignBlock(String alignment) {
+    final node = widget.controller.document.findById(widget.blockId);
+    if (node == null || !_supportsBlockAlignment(node)) {
+      widget.onDismiss();
+      return;
+    }
+    widget.controller.updateAttributes(widget.blockId, {
+      'textAlign': alignment,
+    });
+    widget.onDismiss();
+  }
+
+  bool _supportsBlockAlignment(BlockNode node) {
+    return node.type == BlockTypes.paragraph ||
+        node.type == BlockTypes.heading1 ||
+        node.type == BlockTypes.heading2 ||
+        node.type == BlockTypes.heading3 ||
+        node.type == BlockTypes.heading4 ||
+        node.type == BlockTypes.heading5 ||
+        node.type == BlockTypes.heading6 ||
+        node.type == BlockTypes.table;
+  }
+
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.escape) {
@@ -158,7 +183,7 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
 
   @override
   Widget build(BuildContext context) {
-    const mainMenuHeight = 7 * 40.0 + 8.0;
+    const mainMenuHeight = 8 * 40.0 + 8.0;
     final editorTheme = BlockEditorThemeData.fromContext(context);
     final pos = _clampedPosition(
       context,
@@ -171,6 +196,10 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
     final index = blocks.indexWhere((b) => b.id == widget.blockId);
     final canMoveUp = index > 0;
     final canMoveDown = index < blocks.length - 1;
+    final activeNode = widget.controller.document.findById(widget.blockId);
+    final canAlign = activeNode != null && _supportsBlockAlignment(activeNode);
+    final activeAlignment =
+        activeNode?.attributes['textAlign']?.toString() ?? 'left';
 
     return Stack(
       children: [
@@ -230,8 +259,26 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
                         size: 16,
                         color: editorTheme.mutedForeground,
                       ),
-                      onTap: () =>
-                          setState(() => _showTurnInto = !_showTurnInto),
+                      onTap: () => setState(() {
+                        _showAlign = false;
+                        _showTurnInto = !_showTurnInto;
+                      }),
+                    ),
+                    _ActionItem(
+                      icon: Icons.format_align_left,
+                      label: 'Align',
+                      enabled: canAlign,
+                      trailing: Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: editorTheme.mutedForeground,
+                      ),
+                      onTap: canAlign
+                          ? () => setState(() {
+                              _showTurnInto = false;
+                              _showAlign = !_showAlign;
+                            })
+                          : null,
                     ),
                     _ActionItem(
                       icon: Icons.arrow_upward,
@@ -277,6 +324,19 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
               ),
             ),
           ),
+        if (_showAlign)
+          Positioned(
+            left: (pos.dx + _menuWidth + 4.0).clamp(
+              8.0,
+              MediaQuery.of(context).size.width - _alignWidth - 8.0,
+            ),
+            top: pos.dy,
+            width: _alignWidth,
+            child: _AlignSubmenu(
+              activeAlignment: activeAlignment,
+              onSelect: _alignBlock,
+            ),
+          ),
       ],
     );
   }
@@ -296,6 +356,77 @@ class _BlockActionMenuState extends State<BlockActionMenu> {
       );
     }
     return items;
+  }
+}
+
+class _AlignSubmenu extends StatelessWidget {
+  const _AlignSubmenu({required this.activeAlignment, required this.onSelect});
+
+  final String activeAlignment;
+  final void Function(String alignment) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    return Material(
+      elevation: 6,
+      color: editorTheme.popover,
+      shadowColor: Colors.black.withValues(alpha: 0.20),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(editorTheme.radiusMd),
+        side: BorderSide(color: editorTheme.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ActionItem(
+              icon: Icons.format_align_left,
+              label: 'Align left',
+              trailing: _AlignmentCheck(
+                visible:
+                    activeAlignment != 'center' &&
+                    activeAlignment != 'right' &&
+                    activeAlignment != 'end',
+              ),
+              onTap: () => onSelect('left'),
+            ),
+            _ActionItem(
+              icon: Icons.format_align_center,
+              label: 'Align center',
+              trailing: _AlignmentCheck(visible: activeAlignment == 'center'),
+              onTap: () => onSelect('center'),
+            ),
+            _ActionItem(
+              icon: Icons.format_align_right,
+              label: 'Align right',
+              trailing: _AlignmentCheck(
+                visible: activeAlignment == 'right' || activeAlignment == 'end',
+              ),
+              onTap: () => onSelect('right'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AlignmentCheck extends StatelessWidget {
+  const _AlignmentCheck({required this.visible});
+
+  final bool visible;
+
+  @override
+  Widget build(BuildContext context) {
+    final editorTheme = BlockEditorThemeData.fromContext(context);
+    return SizedBox(
+      width: 18,
+      child: visible
+          ? Icon(Icons.check, size: 16, color: editorTheme.primary)
+          : null,
+    );
   }
 }
 

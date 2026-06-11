@@ -10,6 +10,45 @@ import 'package:block_editor/block_editor.dart';
 /// Describes the structural change that occurred to the document.
 enum ChangeType { insert, delete, update, move, replace }
 
+/// Describes one high-level block operation inside a document change.
+enum BlockOperationType { insert, delete, update, move, replace }
+
+/// Structured operation data emitted with [DocumentChange].
+///
+/// This is intentionally higher-level than text offsets. It records the block
+/// operation that occurred so Markdown save paths can later derive focused
+/// source patches instead of treating every mutation as a whole-document
+/// rewrite.
+final class BlockDocumentOperation {
+  /// Creates a structured block operation record.
+  const BlockDocumentOperation({
+    required this.type,
+    this.blockId,
+    this.before,
+    this.after,
+    this.fromIndex,
+    this.toIndex,
+  });
+
+  /// Operation kind.
+  final BlockOperationType type;
+
+  /// Primary affected block id, when the operation targets a single block.
+  final String? blockId;
+
+  /// Block state before the operation, when available.
+  final BlockNode? before;
+
+  /// Block state after the operation, when available.
+  final BlockNode? after;
+
+  /// Root index before the operation, when relevant.
+  final int? fromIndex;
+
+  /// Root index after the operation, when relevant.
+  final int? toIndex;
+}
+
 /// Carries a document mutation event emitted by [BlockController.changes].
 ///
 /// Every mutation that modifies document structure produces one
@@ -21,6 +60,7 @@ final class DocumentChange {
     required this.type,
     required this.document,
     this.affectedIds = const [],
+    this.operations = const [],
   });
 
   /// The kind of structural mutation that occurred.
@@ -31,6 +71,9 @@ final class DocumentChange {
 
   /// The ids of blocks directly involved in the mutation.
   final List<String> affectedIds;
+
+  /// Structured operation records for this mutation.
+  final List<BlockDocumentOperation> operations;
 }
 
 /// The central state engine for a block editor document.
@@ -206,6 +249,14 @@ final class BlockController {
         type: ChangeType.insert,
         document: _document.copyWith(blocks: updated),
         affectedIds: [node.id],
+        operations: [
+          BlockDocumentOperation(
+            type: BlockOperationType.insert,
+            blockId: node.id,
+            after: node,
+            toIndex: index,
+          ),
+        ],
       ),
     );
   }
@@ -227,7 +278,9 @@ final class BlockController {
   /// Does nothing if no block with [id] exists. Closes and removes the
   /// per-block stream for [id] if one is open.
   void delete(String id) {
-    if (_document.findById(id) == null) return;
+    final index = _document.blocks.indexWhere((block) => block.id == id);
+    final deleted = _document.findById(id);
+    if (deleted == null) return;
     _pushSnapshot();
     final updated = _removeFromList(_document.blocks, id);
     _emit(
@@ -235,6 +288,14 @@ final class BlockController {
         type: ChangeType.delete,
         document: _document.copyWith(blocks: updated),
         affectedIds: [id],
+        operations: [
+          BlockDocumentOperation(
+            type: BlockOperationType.delete,
+            blockId: id,
+            before: deleted,
+            fromIndex: index < 0 ? null : index,
+          ),
+        ],
       ),
     );
     final sc = _blockStreamControllers.remove(id);
@@ -245,7 +306,8 @@ final class BlockController {
   ///
   /// Does nothing if no block with [id] exists.
   void update(String id, BlockNode updatedNode) {
-    if (_document.findById(id) == null) return;
+    final before = _document.findById(id);
+    if (before == null) return;
     _pushSnapshot();
     final updated = _replaceInList(_document.blocks, id, (_) => updatedNode);
     _emit(
@@ -253,6 +315,14 @@ final class BlockController {
         type: ChangeType.update,
         document: _document.copyWith(blocks: updated),
         affectedIds: [id],
+        operations: [
+          BlockDocumentOperation(
+            type: BlockOperationType.update,
+            blockId: id,
+            before: before,
+            after: updatedNode,
+          ),
+        ],
       ),
     );
   }
@@ -287,12 +357,22 @@ final class BlockController {
       affectedIds,
     );
     if (affectedIds.isEmpty) return;
+    final updatedDocument = _document.copyWith(blocks: updated);
     _pushSnapshot();
     _emit(
       DocumentChange(
         type: ChangeType.update,
-        document: _document.copyWith(blocks: updated),
+        document: updatedDocument,
         affectedIds: affectedIds,
+        operations: [
+          for (final id in affectedIds)
+            BlockDocumentOperation(
+              type: BlockOperationType.update,
+              blockId: id,
+              before: _document.findById(id),
+              after: updatedDocument.findById(id),
+            ),
+        ],
       ),
     );
   }
@@ -328,12 +408,23 @@ final class BlockController {
     _pushSnapshot();
     final list = List.of(_document.blocks);
     final node = list.removeAt(currentIndex);
-    list.insert(newIndex.clamp(0, list.length), node);
+    final targetIndex = newIndex.clamp(0, list.length);
+    list.insert(targetIndex, node);
     _emit(
       DocumentChange(
         type: ChangeType.move,
         document: _document.copyWith(blocks: list),
         affectedIds: [id],
+        operations: [
+          BlockDocumentOperation(
+            type: BlockOperationType.move,
+            blockId: id,
+            before: node,
+            after: node,
+            fromIndex: currentIndex,
+            toIndex: targetIndex,
+          ),
+        ],
       ),
     );
   }
@@ -372,7 +463,13 @@ final class BlockController {
     _undoStack.removeLast();
     _document = _undoStack.last;
     _streamController.add(
-      DocumentChange(type: ChangeType.replace, document: _document),
+      DocumentChange(
+        type: ChangeType.replace,
+        document: _document,
+        operations: const [
+          BlockDocumentOperation(type: BlockOperationType.replace),
+        ],
+      ),
     );
   }
 
@@ -385,16 +482,30 @@ final class BlockController {
     _undoStack.add(next);
     _document = next;
     _streamController.add(
-      DocumentChange(type: ChangeType.replace, document: _document),
+      DocumentChange(
+        type: ChangeType.replace,
+        document: _document,
+        operations: const [
+          BlockDocumentOperation(type: BlockOperationType.replace),
+        ],
+      ),
     );
   }
 
   /// Replaces the entire document with [newDocument].
   ///
-  /// The replacement is undoable.
-  void replaceDocument(BlockDocument newDocument) {
-    _pushSnapshot();
-    _emit(DocumentChange(type: ChangeType.replace, document: newDocument));
+  /// The replacement is undoable unless [recordUndo] is false.
+  void replaceDocument(BlockDocument newDocument, {bool recordUndo = true}) {
+    if (recordUndo) _pushSnapshot();
+    _emit(
+      DocumentChange(
+        type: ChangeType.replace,
+        document: newDocument,
+        operations: const [
+          BlockDocumentOperation(type: BlockOperationType.replace),
+        ],
+      ),
+    );
   }
 
   /// Updates the current selection and emits on [selectionStream].

@@ -41,6 +41,32 @@ Future<void> hoverOutsideEditor(WidgetTester tester) async {
   await tester.pump();
 }
 
+Future<void> sendMetaShortcut(
+  WidgetTester tester,
+  LogicalKeyboardKey key,
+) async {
+  await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+  await tester.sendKeyEvent(key);
+  await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+  await tester.pump();
+}
+
+Future<void> sendPlainKey(WidgetTester tester, LogicalKeyboardKey key) async {
+  await tester.sendKeyDownEvent(key);
+  await tester.sendKeyUpEvent(key);
+  await tester.pump();
+  await tester.pump();
+}
+
+Future<void> sendShiftTab(WidgetTester tester) async {
+  await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+  await tester.sendKeyDownEvent(LogicalKeyboardKey.tab);
+  await tester.sendKeyUpEvent(LogicalKeyboardKey.tab);
+  await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+  await tester.pump();
+  await tester.pump();
+}
+
 Finder _tableCellFinder(String text) {
   final field = find.widgetWithText(TextField, text);
   if (field.evaluate().isNotEmpty) return field;
@@ -64,6 +90,12 @@ Finder _tableCellSurfaceFinder(String tableId) {
     return key is ValueKey<String> &&
         key.value.startsWith('block-editor-table-cell-$tableId-');
   });
+}
+
+TextField focusedTextField(WidgetTester tester) {
+  return tester
+      .widgetList<TextField>(find.byType(TextField))
+      .singleWhere((field) => field.focusNode?.hasFocus ?? false);
 }
 
 Finder _tableResizeHandleFinder(MouseCursor cursor) {
@@ -1272,6 +1304,7 @@ void main() {
     testWidgets('primary mouse drag over resize handles resizes cells', (
       tester,
     ) async {
+      final events = <BlockEvent>[];
       await tester.pumpWidget(
         wrap(
           SizedBox(
@@ -1284,7 +1317,7 @@ void main() {
                 ['3', '4'],
               ],
               alignments: const [],
-              onEvent: (_) {},
+              onEvent: events.add,
             ),
           ),
         ),
@@ -1311,6 +1344,9 @@ void main() {
         tester.getSize(tableFinder).width,
         greaterThan(initialTableSize.width),
       );
+      expect(events.last, isA<TableColumnResizedEvent>());
+      expect((events.last as TableColumnResizedEvent).columnIndex, 0);
+      expect((events.last as TableColumnResizedEvent).width, greaterThan(96));
 
       final rowHandle = _tableResizeHandleFinder(
         SystemMouseCursors.resizeRow,
@@ -1329,6 +1365,41 @@ void main() {
       expect(
         tester.getSize(tableFinder).height,
         greaterThan(heightBeforeRowResize),
+      );
+      expect(events.last, isA<TableRowResizedEvent>());
+      expect((events.last as TableRowResizedEvent).rowIndex, 0);
+      expect((events.last as TableRowResizedEvent).height, greaterThan(32));
+    });
+
+    testWidgets('applies persisted table dimensions from attributes', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 700,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A', 'B'],
+              rows: const [
+                ['1', '2'],
+              ],
+              alignments: const [],
+              attributes: const {
+                'tableColumnWidths': {'0': 260.0},
+                'tableRowHeights': {'0': 88.0},
+              },
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      final tableSize = tester.getSize(find.byType(Table));
+      expect(tableSize.width, greaterThan(350));
+      expect(
+        tester.getSize(_tableCellSurfaceFinder('table1').at(2)).height,
+        greaterThan(85),
       );
     });
 
@@ -1430,6 +1501,207 @@ void main() {
       expect(event.text, 'updated');
     });
 
+    testWidgets('cell editors handle Markdown formatting shortcuts', (
+      tester,
+    ) async {
+      final events = <BlockEvent>[];
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 500,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A'],
+              rows: const [
+                ['Draft'],
+              ],
+              alignments: const [],
+              onEvent: events.add,
+            ),
+          ),
+        ),
+      );
+
+      await activateTableCell(tester, 'Draft');
+      final field = tester.widget<TextField>(
+        find.widgetWithText(TextField, 'Draft'),
+      );
+      final controller = field.controller!;
+      controller.selection = const TextSelection(
+        baseOffset: 0,
+        extentOffset: 5,
+      );
+
+      await sendMetaShortcut(tester, LogicalKeyboardKey.keyB);
+
+      expect(controller.text, '**Draft**');
+      expect(controller.selection.baseOffset, 2);
+      expect(controller.selection.extentOffset, 7);
+      expect(events.last, isA<TableCellChangedEvent>());
+      expect((events.last as TableCellChangedEvent).text, '**Draft**');
+
+      controller.selection = const TextSelection(
+        baseOffset: 2,
+        extentOffset: 7,
+      );
+      await sendMetaShortcut(tester, LogicalKeyboardKey.keyI);
+
+      expect(controller.text, '***Draft***');
+      expect(controller.selection.baseOffset, 3);
+      expect(controller.selection.extentOffset, 8);
+      expect((events.last as TableCellChangedEvent).text, '***Draft***');
+
+      controller.selection = const TextSelection(
+        baseOffset: 3,
+        extentOffset: 8,
+      );
+      await sendMetaShortcut(tester, LogicalKeyboardKey.keyB);
+
+      expect(controller.text, '*Draft*');
+      expect(controller.selection.baseOffset, 1);
+      expect(controller.selection.extentOffset, 6);
+      expect((events.last as TableCellChangedEvent).text, '*Draft*');
+
+      controller.selection = const TextSelection(
+        baseOffset: 1,
+        extentOffset: 6,
+      );
+      await sendMetaShortcut(tester, LogicalKeyboardKey.keyI);
+
+      expect(controller.text, 'Draft');
+      expect(controller.selection.baseOffset, 0);
+      expect(controller.selection.extentOffset, 5);
+      expect((events.last as TableCellChangedEvent).text, 'Draft');
+    });
+
+    testWidgets('Tab and Shift+Tab move focus across table cells', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 500,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A', 'B'],
+              rows: const [
+                ['1', '2'],
+              ],
+              alignments: const [],
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      await activateTableCell(tester, '1');
+      await sendPlainKey(tester, LogicalKeyboardKey.tab);
+
+      var field = focusedTextField(tester);
+      expect(field.controller?.text, '2');
+      expect(field.controller?.selection.extentOffset, 0);
+
+      await sendShiftTab(tester);
+
+      field = focusedTextField(tester);
+      expect(field.controller?.text, '1');
+      expect(field.controller?.selection.extentOffset, 1);
+    });
+
+    testWidgets('Tab from the last cell requests a new row', (tester) async {
+      final events = <BlockEvent>[];
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 500,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A', 'B'],
+              rows: const [
+                ['1', '2'],
+              ],
+              alignments: const [],
+              onEvent: events.add,
+            ),
+          ),
+        ),
+      );
+
+      await activateTableCell(tester, '2');
+      await sendPlainKey(tester, LogicalKeyboardKey.tab);
+
+      expect(events.last, isA<TableRowInsertedEvent>());
+      expect((events.last as TableRowInsertedEvent).index, 1);
+      final field = focusedTextField(tester);
+      expect(field.controller?.text, '');
+      expect(field.controller?.selection.extentOffset, 0);
+    });
+
+    testWidgets('arrow keys move across cell boundaries', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 500,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A', 'B'],
+              rows: const [
+                ['1', '2'],
+              ],
+              alignments: const [],
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      await activateTableCell(tester, '1');
+      var field = focusedTextField(tester);
+      field.controller?.selection = const TextSelection.collapsed(offset: 1);
+      await sendPlainKey(tester, LogicalKeyboardKey.arrowRight);
+
+      field = focusedTextField(tester);
+      expect(field.controller?.text, '2');
+      expect(field.controller?.selection.extentOffset, 0);
+
+      await sendPlainKey(tester, LogicalKeyboardKey.arrowLeft);
+
+      field = focusedTextField(tester);
+      expect(field.controller?.text, '1');
+      expect(field.controller?.selection.extentOffset, 1);
+    });
+
+    testWidgets('Enter inserts a Markdown table cell line break', (
+      tester,
+    ) async {
+      final events = <BlockEvent>[];
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 500,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A'],
+              rows: const [
+                ['1'],
+              ],
+              alignments: const [],
+              onEvent: events.add,
+            ),
+          ),
+        ),
+      );
+
+      await activateTableCell(tester, '1');
+      final field = focusedTextField(tester);
+      field.controller?.selection = const TextSelection.collapsed(offset: 1);
+      await sendPlainKey(tester, LogicalKeyboardKey.enter);
+
+      expect(field.controller?.text, '1\n');
+      expect(events.last, isA<TableCellChangedEvent>());
+      expect((events.last as TableCellChangedEvent).text, '1\n');
+    });
+
     testWidgets('emits table action events on pointer down', (tester) async {
       final events = <BlockEvent>[];
       await tester.pumpWidget(
@@ -1509,6 +1781,59 @@ void main() {
     });
   });
 
+  group('Block alignment rendering', () {
+    testWidgets('heading widgets honor centered textAlign attributes', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          H2Widget(
+            blockId: 'h2',
+            delta: TextDelta.fromPlainText('Centered heading'),
+            attributes: const {'textAlign': 'center'},
+            onEvent: (_) {},
+          ),
+        ),
+      );
+
+      final renderer = tester.widget<RichTextRenderer>(
+        find.byType(RichTextRenderer),
+      );
+      expect(renderer.textAlign, TextAlign.center);
+    });
+
+    testWidgets('table widgets honor centered block textAlign attributes', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 640,
+            child: TableWidget(
+              blockId: 'table1',
+              headers: const ['A', 'B'],
+              rows: const [
+                ['1', '2'],
+              ],
+              alignments: const [],
+              attributes: const {'textAlign': 'center'},
+              onEvent: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Align &&
+              widget.alignment == AlignmentDirectional.topCenter,
+        ),
+        findsOneWidget,
+      );
+    });
+  });
+
   group('BlockEvent', () {
     test('TapEvent carries blockId and offset', () {
       const e = TapEvent(blockId: 'b1', offset: 5);
@@ -1549,6 +1874,26 @@ void main() {
       expect(e.blockId, 'table1');
       expect(e.columnIndex, 1);
       expect(e.alignment, 'right');
+    });
+
+    test('table resize events carry committed dimensions', () {
+      const column = TableColumnResizedEvent(
+        blockId: 'table1',
+        columnIndex: 2,
+        width: 240,
+      );
+      expect(column.blockId, 'table1');
+      expect(column.columnIndex, 2);
+      expect(column.width, 240);
+
+      const row = TableRowResizedEvent(
+        blockId: 'table1',
+        rowIndex: 1,
+        height: 72,
+      );
+      expect(row.blockId, 'table1');
+      expect(row.rowIndex, 1);
+      expect(row.height, 72);
     });
 
     test('RawMarkdownChangedEvent carries blockId and text', () {

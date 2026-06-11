@@ -4,6 +4,8 @@ import '../sections/custom_block_demo_section.dart';
 import '../sections/demo_blocks_section.dart';
 import '../sections/editor_section.dart';
 import '../sections/rendering_playground_section.dart';
+import '../storage/vten_presentation_state_store.dart';
+import '../storage/vten_reader_preferences_store.dart';
 import '../theme/app_theme.dart';
 import 'nav_bottom_bar.dart';
 import 'nav_sidebar.dart';
@@ -33,6 +35,10 @@ class ShellScaffold extends StatefulWidget {
 
 class _ShellScaffoldState extends State<ShellScaffold> {
   int _selectedIndex = 0;
+  late final VtenReaderPreferencesStore _readerPreferencesStore =
+      VtenReaderPreferencesStore();
+  late final VtenPresentationStateStore _presentationStateStore =
+      VtenPresentationStateStore();
 
   void _onDestinationSelected(int index) {
     if (_selectedIndex == index) return;
@@ -45,6 +51,9 @@ class _ShellScaffoldState extends State<ShellScaffold> {
         key: const ValueKey('editor'),
         themeMode: widget.themeMode,
         onToggleTheme: widget.onToggleTheme,
+        preferencesStore: _readerPreferencesStore,
+        presentationStateStore: _presentationStateStore,
+        presentationDocumentId: 'example/editor.md',
       ),
       1 => DemoBlocksSection(
         key: const ValueKey('demo'),
@@ -60,11 +69,15 @@ class _ShellScaffoldState extends State<ShellScaffold> {
         key: const ValueKey('playground'),
         themeMode: widget.themeMode,
         onToggleTheme: widget.onToggleTheme,
+        preferencesStore: _readerPreferencesStore,
       ),
       _ => EditorSection(
         key: ValueKey('editor'),
         themeMode: widget.themeMode,
         onToggleTheme: widget.onToggleTheme,
+        preferencesStore: _readerPreferencesStore,
+        presentationStateStore: _presentationStateStore,
+        presentationDocumentId: 'example/editor.md',
       ),
     };
   }

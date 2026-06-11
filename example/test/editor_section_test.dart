@@ -94,6 +94,40 @@ void main() {
       expect(editor.readOnly, isFalse);
     });
 
+    testWidgets('reader compact and alignment controls update editor theme', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(EditorSection(themeMode: ThemeMode.light, onToggleTheme: () {})),
+      );
+      await tester.pump();
+
+      var theme = tester.widget<MarkdownDocumentTheme>(
+        find.byType(MarkdownDocumentTheme),
+      );
+      expect(theme.data.density, MarkdownDocumentDensity.comfortable);
+      expect(
+        theme.data.contentAlignment,
+        MarkdownDocumentContentAlignment.centered,
+      );
+
+      await tester.tap(find.byTooltip('Switch to compact reader'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Align content left'));
+      await tester.pump();
+
+      theme = tester.widget<MarkdownDocumentTheme>(
+        find.byType(MarkdownDocumentTheme),
+      );
+      expect(theme.data.density, MarkdownDocumentDensity.compact);
+      expect(
+        theme.data.contentAlignment,
+        MarkdownDocumentContentAlignment.leading,
+      );
+      expect(theme.data.blockSpacingScale, lessThan(1));
+      expect(theme.data.surfacePaddingScale, lessThan(1));
+    });
+
     testWidgets('JSON export button opens modal with non-empty content', (
       tester,
     ) async {
@@ -135,7 +169,7 @@ void main() {
 
       expect(find.text('Clear document?'), findsOneWidget);
       expect(find.text('Cancel'), findsOneWidget);
-      expect(find.text('Clear'), findsNWidgets(2));
+      expect(find.widgetWithText(TextButton, 'Clear'), findsOneWidget);
     });
 
     testWidgets('clear document cancel dismisses dialog without clearing', (

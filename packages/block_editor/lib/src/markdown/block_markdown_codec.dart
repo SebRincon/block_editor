@@ -1,5 +1,7 @@
 library;
 
+import 'dart:convert';
+
 import 'package:block_editor/block_editor.dart';
 
 /// Converts between Markdown text and the block_editor document model.
@@ -8,6 +10,44 @@ import 'package:block_editor/block_editor.dart';
 /// built-in block types. Unsupported block constructs are preserved as raw
 /// Markdown blocks instead of being degraded or dropped.
 abstract final class BlockMarkdownCodec {
+  /// One-based source start line attached to blocks decoded from Markdown.
+  static const String sourceStartLineAttribute = 'sourceStartLine';
+
+  /// One-based inclusive source end line attached to decoded Markdown blocks.
+  static const String sourceEndLineAttribute = 'sourceEndLine';
+
+  /// Zero-based source start offset attached to decoded Markdown blocks.
+  static const String sourceStartOffsetAttribute = 'sourceStartOffset';
+
+  /// Zero-based exclusive source end offset attached to decoded Markdown blocks.
+  static const String sourceEndOffsetAttribute = 'sourceEndOffset';
+
+  /// Exact original Markdown slice for a decoded block.
+  static const String sourceMarkdownAttribute = 'sourceMarkdown';
+
+  /// Semantic fingerprint recorded at decode time for change detection.
+  static const String sourceFingerprintAttribute = 'sourceFingerprint';
+
+  static const String _sourceLeadingWhitespaceAttribute =
+      'sourceLeadingWhitespace';
+
+  static const Set<String> _sourceAttributeKeys = {
+    sourceStartLineAttribute,
+    sourceEndLineAttribute,
+    sourceStartOffsetAttribute,
+    sourceEndOffsetAttribute,
+    sourceMarkdownAttribute,
+    sourceFingerprintAttribute,
+    _sourceLeadingWhitespaceAttribute,
+  };
+
+  static const Set<String> _transientAttributeKeys = {
+    'number',
+    'textAlign',
+    'tableColumnWidths',
+    'tableRowHeights',
+  };
+
   static final RegExp _headingPattern = RegExp(r'^(#{1,6})\s+(.*)$');
   static final RegExp _todoPattern = RegExp(
     r'^([ \t]*)[-*+]\s+\[([ xX])\]\s+(.*)$',
@@ -32,14 +72,105 @@ abstract final class BlockMarkdownCodec {
   );
   static final RegExp _blockIdPattern = RegExp(r'^\s{0,3}\^[A-Za-z0-9_-]+\s*$');
 
+  /// Inspects [markdown] for source-fidelity behavior without mutating it.
+  ///
+  /// This is intended for host diagnostics, fixture tests, and future source
+  /// preservation work. It answers the most important trust question for a
+  /// Markdown editor: "will this document come back as the same Markdown?"
+  static BlockMarkdownFidelityReport inspect(String markdown) {
+    final normalized = markdown.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final normalizedSource = normalized.trimRight();
+    final document = decode(normalized);
+    final encoded = encode(document);
+    final normalizedEncoded = encodeNormalized(document);
+    final issues = <BlockMarkdownFidelityIssue>[];
+    final rawKinds = <String, int>{};
+
+    for (final block in document.flatten()) {
+      if (block.type != BlockTypes.rawMarkdown) continue;
+      final kind = (block.attributes['rawKind'] as String?) ?? 'rawMarkdown';
+      rawKinds[kind] = (rawKinds[kind] ?? 0) + 1;
+      issues.add(
+        BlockMarkdownFidelityIssue(
+          kind: BlockMarkdownFidelityIssueKind.rawPreserved,
+          severity: BlockMarkdownFidelitySeverity.info,
+          message: 'Preserved unsupported Markdown as a raw block.',
+          rawKind: kind,
+          startLine: block.attributes[sourceStartLineAttribute] as int?,
+          endLine: block.attributes[sourceEndLineAttribute] as int?,
+        ),
+      );
+    }
+
+    final roundTripsExactly = encoded == normalizedSource;
+    if (!roundTripsExactly) {
+      issues.add(
+        const BlockMarkdownFidelityIssue(
+          kind: BlockMarkdownFidelityIssueKind.normalizedSource,
+          severity: BlockMarkdownFidelitySeverity.warning,
+          message: 'Markdown output differs from the normalized input source.',
+        ),
+      );
+    } else if (normalizedEncoded != normalizedSource) {
+      issues.add(
+        const BlockMarkdownFidelityIssue(
+          kind: BlockMarkdownFidelityIssueKind.sourcePreserved,
+          severity: BlockMarkdownFidelitySeverity.info,
+          message:
+              'Source-preserving encode keeps the original Markdown, but a normalized encode would differ.',
+        ),
+      );
+    }
+
+    final flattened = document.flatten();
+    return BlockMarkdownFidelityReport(
+      originalMarkdown: normalizedSource,
+      encodedMarkdown: encoded,
+      normalizedMarkdown: normalizedEncoded,
+      roundTripsExactly: roundTripsExactly,
+      normalizedRoundTripsExactly: normalizedEncoded == normalizedSource,
+      blockCount: flattened.length,
+      sourceBackedBlockCount: flattened.where(_hasSourceMetadata).length,
+      preservedSourceBlockCount: flattened.where(_usesOriginalSource).length,
+      changedSourceBlockCount: flattened
+          .where(
+            (block) => _hasSourceMetadata(block) && _isSourceChanged(block),
+          )
+          .length,
+      rawMarkdownBlockCount: rawKinds.values.fold(
+        0,
+        (sum, count) => sum + count,
+      ),
+      rawMarkdownKinds: Map.unmodifiable(rawKinds),
+      issues: List.unmodifiable(issues),
+    );
+  }
+
   /// Parses [markdown] into a [BlockDocument].
   static BlockDocument decode(String markdown) {
     final normalized = markdown.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
     if (normalized.trim().isEmpty) return BlockDocument.empty();
 
     final lines = normalized.split('\n');
+    final lineStarts = _lineStartOffsets(normalized);
     final blocks = <BlockNode>[];
+    var previousSourceEndOffset = 0;
     var index = 0;
+
+    void addBlock(BlockNode block, int startLineIndex, int endLineIndex) {
+      final blockWithSource = _attachSourceMetadata(
+        block,
+        normalized,
+        lines,
+        lineStarts,
+        startLineIndex,
+        endLineIndex,
+        previousSourceEndOffset,
+      );
+      blocks.add(blockWithSource);
+      previousSourceEndOffset =
+          blockWithSource.attributes[sourceEndOffsetAttribute] as int;
+    }
 
     while (index < lines.length) {
       final line = lines[index];
@@ -51,15 +182,17 @@ abstract final class BlockMarkdownCodec {
       }
 
       if (index == 0 && trimmed == '---') {
+        final start = index;
         final parsed = _tryParseFrontmatter(lines, index);
         if (parsed != null) {
-          blocks.add(parsed.block);
+          addBlock(parsed.block, start, parsed.nextIndex);
           index = parsed.nextIndex;
           continue;
         }
       }
 
       if (trimmed.startsWith('```')) {
+        final start = index;
         final language = trimmed.substring(3).trim();
         final code = StringBuffer();
         index++;
@@ -69,7 +202,7 @@ abstract final class BlockMarkdownCodec {
           index++;
         }
         if (index < lines.length) index++;
-        blocks.add(
+        addBlock(
           BlockNode(
             type: language.toLowerCase() == 'mermaid'
                 ? BlockTypes.mermaid
@@ -77,35 +210,41 @@ abstract final class BlockMarkdownCodec {
             attributes: {if (language.isNotEmpty) 'language': language},
             delta: TextDelta.fromPlainText(code.toString()),
           ),
+          start,
+          index,
         );
         continue;
       }
 
+      final mathStart = index;
       final mathBlock = _tryParseMathBlock(lines, index);
       if (mathBlock != null) {
-        blocks.add(mathBlock.block);
+        addBlock(mathBlock.block, mathStart, mathBlock.nextIndex);
         index = mathBlock.nextIndex;
         continue;
       }
 
+      final rawStart = index;
       final rawMarkdown = _tryParseRawMarkdownBlock(lines, index);
       if (rawMarkdown != null) {
-        blocks.add(rawMarkdown.block);
+        addBlock(rawMarkdown.block, rawStart, rawMarkdown.nextIndex);
         index = rawMarkdown.nextIndex;
         continue;
       }
 
       if (_isTableStart(lines, index)) {
+        final start = index;
         final parsed = _parseTable(lines, index);
-        blocks.add(parsed.block);
+        addBlock(parsed.block, start, parsed.nextIndex);
         index = parsed.nextIndex;
         continue;
       }
 
       final heading = _headingPattern.firstMatch(line);
       if (heading != null) {
+        final start = index;
         final level = heading.group(1)!.length;
-        blocks.add(
+        addBlock(
           BlockNode(
             type: switch (level) {
               1 => BlockTypes.heading1,
@@ -117,20 +256,23 @@ abstract final class BlockMarkdownCodec {
             },
             delta: _parseInline(heading.group(2) ?? ''),
           ),
+          start,
+          start + 1,
         );
         index++;
         continue;
       }
 
       if (_dividerPattern.hasMatch(line)) {
-        blocks.add(BlockNode(type: BlockTypes.divider));
+        addBlock(BlockNode(type: BlockTypes.divider), index, index + 1);
         index++;
         continue;
       }
 
       final todo = _todoPattern.firstMatch(line);
       if (todo != null) {
-        blocks.add(
+        final start = index;
+        addBlock(
           BlockNode(
             type: BlockTypes.todo,
             attributes: {
@@ -140,6 +282,8 @@ abstract final class BlockMarkdownCodec {
             },
             delta: _parseInline(todo.group(3) ?? ''),
           ),
+          start,
+          start + 1,
         );
         index++;
         continue;
@@ -147,7 +291,8 @@ abstract final class BlockMarkdownCodec {
 
       final bullet = _bulletPattern.firstMatch(line);
       if (bullet != null) {
-        blocks.add(
+        final start = index;
+        addBlock(
           BlockNode(
             type: BlockTypes.bulletList,
             attributes: {
@@ -156,6 +301,8 @@ abstract final class BlockMarkdownCodec {
             },
             delta: _parseInline(bullet.group(2) ?? ''),
           ),
+          start,
+          start + 1,
         );
         index++;
         continue;
@@ -163,7 +310,8 @@ abstract final class BlockMarkdownCodec {
 
       final numbered = _numberedPattern.firstMatch(line);
       if (numbered != null) {
-        blocks.add(
+        final start = index;
+        addBlock(
           BlockNode(
             type: BlockTypes.numberedList,
             attributes: {
@@ -172,6 +320,8 @@ abstract final class BlockMarkdownCodec {
             },
             delta: _parseInline(numbered.group(2) ?? ''),
           ),
+          start,
+          start + 1,
         );
         index++;
         continue;
@@ -179,13 +329,15 @@ abstract final class BlockMarkdownCodec {
 
       final callout = _calloutPattern.firstMatch(line);
       if (callout != null) {
+        final start = index;
         final parsed = _parseCallout(lines, index, callout);
-        blocks.add(parsed.block);
+        addBlock(parsed.block, start, parsed.nextIndex);
         index = parsed.nextIndex;
         continue;
       }
 
       if (trimmed.startsWith('>')) {
+        final start = index;
         final quote = StringBuffer();
         while (index < lines.length &&
             lines[index].trimLeft().startsWith('>')) {
@@ -195,18 +347,21 @@ abstract final class BlockMarkdownCodec {
           );
           index++;
         }
-        blocks.add(
+        addBlock(
           BlockNode(
             type: BlockTypes.quote,
             delta: _parseInline(quote.toString()),
           ),
+          start,
+          index,
         );
         continue;
       }
 
       final image = _imagePattern.firstMatch(trimmed);
       if (image != null) {
-        blocks.add(
+        final start = index;
+        addBlock(
           BlockNode(
             type: BlockTypes.image,
             attributes: {
@@ -214,6 +369,8 @@ abstract final class BlockMarkdownCodec {
               'url': image.group(2) ?? '',
             },
           ),
+          start,
+          start + 1,
         );
         index++;
         continue;
@@ -221,7 +378,8 @@ abstract final class BlockMarkdownCodec {
 
       final link = _linkPattern.firstMatch(trimmed);
       if (link != null) {
-        blocks.add(
+        final start = index;
+        addBlock(
           BlockNode(
             type: BlockTypes.link,
             attributes: {
@@ -230,24 +388,28 @@ abstract final class BlockMarkdownCodec {
             },
             delta: TextDelta.fromPlainText(link.group(1) ?? ''),
           ),
+          start,
+          start + 1,
         );
         index++;
         continue;
       }
 
-      final paragraph = StringBuffer(line);
+      final start = index;
+      final paragraphLines = <String>[line];
       index++;
       while (index < lines.length && !_startsBlock(lines[index])) {
         if (lines[index].trim().isEmpty) break;
-        paragraph.write('\n');
-        paragraph.write(lines[index]);
+        paragraphLines.add(lines[index]);
         index++;
       }
-      blocks.add(
+      addBlock(
         BlockNode(
           type: BlockTypes.paragraph,
-          delta: _parseInline(paragraph.toString()),
+          delta: _parseInline(_normalizeParagraphText(paragraphLines)),
         ),
+        start,
+        index,
       );
     }
 
@@ -257,7 +419,23 @@ abstract final class BlockMarkdownCodec {
   }
 
   /// Serializes [document] into Markdown.
+  ///
+  /// When [document] was created by [decode], unchanged blocks reuse their
+  /// original Markdown slices. This keeps valid source details such as table
+  /// separator spacing, ordered-list starting numbers, raw HTML, and blank-line
+  /// rhythm intact while still re-encoding blocks that were actually changed.
   static String encode(BlockDocument document) {
+    if (document.flatten().any(_hasSourceMetadata)) {
+      return _encodeWithSourcePreservation(document);
+    }
+    return encodeNormalized(document);
+  }
+
+  /// Serializes [document] into normalized Markdown without source preservation.
+  ///
+  /// This is useful for diagnostics and tests that need to compare the semantic
+  /// Markdown shape independently from the source-preserving save path.
+  static String encodeNormalized(BlockDocument document) {
     final buffer = StringBuffer();
     final blocks = document.flatten();
 
@@ -275,6 +453,193 @@ abstract final class BlockMarkdownCodec {
     return buffer.toString().trimRight();
   }
 
+  static String _encodeWithSourcePreservation(BlockDocument document) {
+    final buffer = StringBuffer();
+    final blocks = document.flatten();
+    BlockNode? previousBlock;
+    int? previousSourceEndOffset;
+
+    for (final block in blocks) {
+      final line = _usesOriginalSource(block)
+          ? block.attributes[sourceMarkdownAttribute] as String?
+          : _encodeBlock(block);
+      if (line == null) continue;
+
+      if (buffer.isNotEmpty) {
+        final sourceGap = _sourceGapBeforeBlock(block, previousSourceEndOffset);
+        buffer.write(sourceGap ?? _defaultGapBefore(previousBlock));
+      }
+
+      buffer.write(line);
+      previousBlock = block;
+      previousSourceEndOffset = _hasSourceMetadata(block)
+          ? block.attributes[sourceEndOffsetAttribute] as int?
+          : null;
+    }
+
+    return buffer.toString().trimRight();
+  }
+
+  static String _defaultGapBefore(BlockNode? previousBlock) {
+    if (previousBlock == null) return '';
+    return _separatesFromNext(previousBlock.type) ? '\n\n' : '\n';
+  }
+
+  static String? _sourceGapBeforeBlock(
+    BlockNode block,
+    int? previousSourceEndOffset,
+  ) {
+    if (previousSourceEndOffset == null || !_hasSourceMetadata(block)) {
+      return null;
+    }
+    final sourceStart = block.attributes[sourceStartOffsetAttribute] as int?;
+    final sourceGap =
+        block.attributes[_sourceLeadingWhitespaceAttribute] as String?;
+    if (sourceStart == null || sourceGap == null) return null;
+    if (sourceStart < previousSourceEndOffset) return null;
+    return sourceGap;
+  }
+
+  static List<int> _lineStartOffsets(String source) {
+    final starts = <int>[0];
+    for (var i = 0; i < source.length; i++) {
+      if (source.codeUnitAt(i) == 0x0A) starts.add(i + 1);
+    }
+    return starts;
+  }
+
+  static BlockNode _attachSourceMetadata(
+    BlockNode block,
+    String source,
+    List<String> lines,
+    List<int> lineStarts,
+    int startLineIndex,
+    int endLineIndex,
+    int previousSourceEndOffset,
+  ) {
+    final startOffset = _sourceStartOffset(
+      lineStarts,
+      startLineIndex,
+      source.length,
+    );
+    final endOffset = _sourceEndOffset(
+      lineStarts,
+      lines,
+      endLineIndex,
+      source.length,
+    );
+    final safeStart = startOffset.clamp(0, source.length).toInt();
+    final safeEnd = endOffset.clamp(safeStart, source.length).toInt();
+    final safeGapStart = previousSourceEndOffset.clamp(0, safeStart).toInt();
+    final attributes = <String, dynamic>{
+      ...block.attributes,
+      sourceStartLineAttribute: startLineIndex + 1,
+      sourceEndLineAttribute: endLineIndex,
+      sourceStartOffsetAttribute: safeStart,
+      sourceEndOffsetAttribute: safeEnd,
+      sourceMarkdownAttribute: source.substring(safeStart, safeEnd),
+      _sourceLeadingWhitespaceAttribute: source.substring(
+        safeGapStart,
+        safeStart,
+      ),
+    };
+    final semanticBlock = block.copyWith(attributes: attributes);
+    attributes[sourceFingerprintAttribute] = _semanticFingerprint(
+      semanticBlock,
+    );
+    return block.copyWith(attributes: attributes);
+  }
+
+  static int _sourceStartOffset(
+    List<int> lineStarts,
+    int startLineIndex,
+    int sourceLength,
+  ) {
+    if (startLineIndex < 0) return 0;
+    if (startLineIndex >= lineStarts.length) return sourceLength;
+    return lineStarts[startLineIndex];
+  }
+
+  static int _sourceEndOffset(
+    List<int> lineStarts,
+    List<String> lines,
+    int endLineIndex,
+    int sourceLength,
+  ) {
+    if (endLineIndex <= 0) return 0;
+    if (endLineIndex >= lines.length) return sourceLength;
+    return (lineStarts[endLineIndex] - 1).clamp(0, sourceLength).toInt();
+  }
+
+  static bool _hasSourceMetadata(BlockNode block) {
+    return block.attributes[sourceMarkdownAttribute] is String &&
+        block.attributes[sourceFingerprintAttribute] is String &&
+        block.attributes[sourceStartOffsetAttribute] is int &&
+        block.attributes[sourceEndOffsetAttribute] is int;
+  }
+
+  static bool _usesOriginalSource(BlockNode block) {
+    return _hasSourceMetadata(block) && !_isSourceChanged(block);
+  }
+
+  static bool _isSourceChanged(BlockNode block) {
+    final original = block.attributes[sourceFingerprintAttribute] as String?;
+    if (original == null) return true;
+    return original != _semanticFingerprint(block);
+  }
+
+  static String _semanticFingerprint(BlockNode block) {
+    return jsonEncode(_stableJson(_semanticBlockJson(block)));
+  }
+
+  static Map<String, Object?> _semanticBlockJson(BlockNode block) {
+    final attributes = _semanticAttributes(block.attributes);
+    return {
+      'type': block.type,
+      if (attributes.isNotEmpty) 'attributes': attributes,
+      if (block.delta != null) 'delta': block.delta!.toJson(),
+      if (block.children.isNotEmpty)
+        'children': block.children.map(_semanticBlockJson).toList(),
+    };
+  }
+
+  static Map<String, Object?> _semanticAttributes(
+    Map<String, dynamic> attributes,
+  ) {
+    final result = <String, Object?>{};
+    final keys =
+        attributes.keys
+            .where(
+              (key) =>
+                  !_sourceAttributeKeys.contains(key) &&
+                  !_transientAttributeKeys.contains(key),
+            )
+            .toList()
+          ..sort();
+    for (final key in keys) {
+      result[key] = _stableJson(attributes[key]);
+    }
+    return result;
+  }
+
+  static Object? _stableJson(Object? value) {
+    if (value is Map) {
+      final keys = value.keys.map((key) => key.toString()).toList()..sort();
+      return {
+        for (final key in keys)
+          key: _stableJson(
+            value.entries
+                .firstWhere((entry) => entry.key.toString() == key)
+                .value,
+          ),
+      };
+    }
+    if (value is Iterable) {
+      return value.map(_stableJson).toList();
+    }
+    return value;
+  }
+
   static bool _startsBlock(String line) {
     final trimmed = line.trim();
     if (trimmed.isEmpty) return true;
@@ -289,6 +654,43 @@ abstract final class BlockMarkdownCodec {
         _imagePattern.hasMatch(trimmed) ||
         _linkPattern.hasMatch(trimmed) ||
         _isTableRow(line);
+  }
+
+  static String _normalizeParagraphText(List<String> lines) {
+    if (lines.isEmpty) return '';
+
+    final buffer = StringBuffer();
+    var previousWasHardBreak = false;
+
+    for (var i = 0; i < lines.length; i++) {
+      final isLast = i == lines.length - 1;
+      final line = lines[i];
+      final currentHasHardBreak = !isLast && _hasMarkdownHardLineBreak(line);
+      final text = _stripMarkdownHardLineBreak(line);
+
+      if (i == 0) {
+        buffer.write(text.trimRight());
+      } else {
+        buffer.write(previousWasHardBreak ? '\n' : ' ');
+        buffer.write(text.trimLeft().trimRight());
+      }
+
+      previousWasHardBreak = currentHasHardBreak;
+    }
+
+    return buffer.toString();
+  }
+
+  static bool _hasMarkdownHardLineBreak(String line) {
+    if (line.endsWith(r'\')) return true;
+    return RegExp(r' {2,}$').hasMatch(line);
+  }
+
+  static String _stripMarkdownHardLineBreak(String line) {
+    if (line.endsWith(r'\')) {
+      return line.substring(0, line.length - 1).trimRight();
+    }
+    return line.trimRight();
   }
 
   static String? _encodeBlock(BlockNode block) {
@@ -614,11 +1016,17 @@ abstract final class BlockMarkdownCodec {
 
     if (trimmed.startsWith(r'$$')) {
       if (trimmed.length > 2 && trimmed.endsWith(r'$$')) {
-        return _rawMarkdownBlockFromLines(lines, index, index + 1);
+        return _rawMarkdownBlockFromLines(
+          lines,
+          index,
+          index + 1,
+          rawKind: 'math',
+        );
       }
       return _collectDelimitedRawMarkdown(
         lines,
         index,
+        rawKind: 'math',
         isClosingLine: (candidate, cursor) =>
             cursor > index && candidate.trim().endsWith(r'$$'),
       );
@@ -626,11 +1034,17 @@ abstract final class BlockMarkdownCodec {
 
     if (trimmed.startsWith('%%')) {
       if (trimmed.length > 2 && trimmed.endsWith('%%')) {
-        return _rawMarkdownBlockFromLines(lines, index, index + 1);
+        return _rawMarkdownBlockFromLines(
+          lines,
+          index,
+          index + 1,
+          rawKind: 'obsidianComment',
+        );
       }
       return _collectDelimitedRawMarkdown(
         lines,
         index,
+        rawKind: 'obsidianComment',
         isClosingLine: (candidate, cursor) =>
             cursor > index && candidate.trimRight().endsWith('%%'),
       );
@@ -638,30 +1052,62 @@ abstract final class BlockMarkdownCodec {
 
     if (trimmed.startsWith('<!--')) {
       if (trimmed.contains('-->')) {
-        return _rawMarkdownBlockFromLines(lines, index, index + 1);
+        return _rawMarkdownBlockFromLines(
+          lines,
+          index,
+          index + 1,
+          rawKind: 'htmlComment',
+        );
       }
       return _collectDelimitedRawMarkdown(
         lines,
         index,
+        rawKind: 'htmlComment',
         isClosingLine: (candidate, _) => candidate.contains('-->'),
       );
     }
 
-    if (_footnoteDefinitionPattern.hasMatch(line) ||
-        _referenceDefinitionPattern.hasMatch(line)) {
-      return _collectDefinitionRawMarkdown(lines, index);
+    if (_footnoteDefinitionPattern.hasMatch(line)) {
+      return _collectDefinitionRawMarkdown(
+        lines,
+        index,
+        rawKind: 'footnoteDefinition',
+      );
+    }
+
+    if (_referenceDefinitionPattern.hasMatch(line)) {
+      return _collectDefinitionRawMarkdown(
+        lines,
+        index,
+        rawKind: 'referenceDefinition',
+      );
     }
 
     if (_blockIdPattern.hasMatch(line)) {
-      return _rawMarkdownBlockFromLines(lines, index, index + 1);
+      return _rawMarkdownBlockFromLines(
+        lines,
+        index,
+        index + 1,
+        rawKind: 'blockId',
+      );
     }
 
     if (trimmed.startsWith('<!') || trimmed.startsWith('<?')) {
-      return _rawMarkdownBlockFromLines(lines, index, index + 1);
+      return _rawMarkdownBlockFromLines(
+        lines,
+        index,
+        index + 1,
+        rawKind: 'htmlDeclaration',
+      );
     }
 
     if (trimmed.startsWith('</')) {
-      return _rawMarkdownBlockFromLines(lines, index, index + 1);
+      return _rawMarkdownBlockFromLines(
+        lines,
+        index,
+        index + 1,
+        rawKind: 'html',
+      );
     }
 
     final htmlStart = _htmlBlockStartPattern.firstMatch(line);
@@ -672,12 +1118,18 @@ abstract final class BlockMarkdownCodec {
     if (_htmlVoidTags.contains(tagLower) ||
         trimmed.endsWith('/>') ||
         _hasClosingHtmlTag(line, tag)) {
-      return _rawMarkdownBlockFromLines(lines, index, index + 1);
+      return _rawMarkdownBlockFromLines(
+        lines,
+        index,
+        index + 1,
+        rawKind: 'html',
+      );
     }
 
     return _collectDelimitedRawMarkdown(
       lines,
       index,
+      rawKind: 'html',
       isClosingLine: (candidate, _) => _hasClosingHtmlTag(candidate, tag),
     );
   }
@@ -685,22 +1137,34 @@ abstract final class BlockMarkdownCodec {
   static ({BlockNode block, int nextIndex}) _collectDelimitedRawMarkdown(
     List<String> lines,
     int index, {
+    required String rawKind,
     required bool Function(String line, int cursor) isClosingLine,
   }) {
     var cursor = index + 1;
     while (cursor < lines.length) {
       if (isClosingLine(lines[cursor], cursor)) {
-        return _rawMarkdownBlockFromLines(lines, index, cursor + 1);
+        return _rawMarkdownBlockFromLines(
+          lines,
+          index,
+          cursor + 1,
+          rawKind: rawKind,
+        );
       }
       cursor++;
     }
-    return _rawMarkdownBlockFromLines(lines, index, index + 1);
+    return _rawMarkdownBlockFromLines(
+      lines,
+      index,
+      index + 1,
+      rawKind: rawKind,
+    );
   }
 
   static ({BlockNode block, int nextIndex}) _collectDefinitionRawMarkdown(
     List<String> lines,
-    int index,
-  ) {
+    int index, {
+    required String rawKind,
+  }) {
     var cursor = index + 1;
     while (cursor < lines.length) {
       final line = lines[cursor];
@@ -715,7 +1179,7 @@ abstract final class BlockMarkdownCodec {
       if (!_isIndentedContinuation(line)) break;
       cursor++;
     }
-    return _rawMarkdownBlockFromLines(lines, index, cursor);
+    return _rawMarkdownBlockFromLines(lines, index, cursor, rawKind: rawKind);
   }
 
   static bool _isIndentedContinuation(String line) {
@@ -732,11 +1196,17 @@ abstract final class BlockMarkdownCodec {
   static ({BlockNode block, int nextIndex}) _rawMarkdownBlockFromLines(
     List<String> lines,
     int start,
-    int end,
-  ) {
+    int end, {
+    required String rawKind,
+  }) {
     return (
       block: BlockNode(
         type: BlockTypes.rawMarkdown,
+        attributes: {
+          'rawKind': rawKind,
+          sourceStartLineAttribute: start + 1,
+          sourceEndLineAttribute: end,
+        },
         delta: TextDelta.fromPlainText(lines.sublist(start, end).join('\n')),
       ),
       nextIndex: end,
@@ -1173,6 +1643,123 @@ abstract final class BlockMarkdownCodec {
     }
     return next;
   }
+}
+
+/// Severity for Markdown source-fidelity diagnostics.
+enum BlockMarkdownFidelitySeverity {
+  /// Informational note. The source is still preserved.
+  info,
+
+  /// Source output changed during decode/encode and should be reviewed.
+  warning,
+}
+
+/// Category for a Markdown source-fidelity diagnostic.
+enum BlockMarkdownFidelityIssueKind {
+  /// Unsupported Markdown was preserved as an explicit raw Markdown block.
+  rawPreserved,
+
+  /// Source preservation kept Markdown that normalized encoding would rewrite.
+  sourcePreserved,
+
+  /// Re-encoding changed the Markdown string compared with normalized input.
+  normalizedSource,
+}
+
+/// One source-fidelity diagnostic produced by [BlockMarkdownCodec.inspect].
+final class BlockMarkdownFidelityIssue {
+  /// Creates a Markdown source-fidelity diagnostic.
+  const BlockMarkdownFidelityIssue({
+    required this.kind,
+    required this.severity,
+    required this.message,
+    this.rawKind,
+    this.startLine,
+    this.endLine,
+  });
+
+  /// The issue category.
+  final BlockMarkdownFidelityIssueKind kind;
+
+  /// The issue severity.
+  final BlockMarkdownFidelitySeverity severity;
+
+  /// Human-readable diagnostic message.
+  final String message;
+
+  /// Raw Markdown subtype when this issue describes raw preservation.
+  final String? rawKind;
+
+  /// One-based source start line when the diagnostic maps to a source span.
+  final int? startLine;
+
+  /// One-based inclusive source end line when the diagnostic maps to a source
+  /// span.
+  final int? endLine;
+}
+
+/// Source-fidelity summary for a Markdown decode/encode cycle.
+final class BlockMarkdownFidelityReport {
+  /// Creates a Markdown source-fidelity summary.
+  const BlockMarkdownFidelityReport({
+    required this.originalMarkdown,
+    required this.encodedMarkdown,
+    required this.normalizedMarkdown,
+    required this.roundTripsExactly,
+    required this.normalizedRoundTripsExactly,
+    required this.blockCount,
+    required this.sourceBackedBlockCount,
+    required this.preservedSourceBlockCount,
+    required this.changedSourceBlockCount,
+    required this.rawMarkdownBlockCount,
+    required this.rawMarkdownKinds,
+    required this.issues,
+  });
+
+  /// Normalized input Markdown with trailing whitespace trimmed the same way as
+  /// [BlockMarkdownCodec.encode].
+  final String originalMarkdown;
+
+  /// Markdown produced after decode/encode.
+  ///
+  /// This is the source-preserving output used by [BlockMarkdownCodec.encode].
+  final String encodedMarkdown;
+
+  /// Markdown produced by normalized semantic encoding without source reuse.
+  final String normalizedMarkdown;
+
+  /// Whether [encodedMarkdown] exactly matches [originalMarkdown].
+  final bool roundTripsExactly;
+
+  /// Whether [normalizedMarkdown] exactly matches [originalMarkdown].
+  final bool normalizedRoundTripsExactly;
+
+  /// Number of flattened document blocks produced by decoding.
+  final int blockCount;
+
+  /// Number of blocks that carry original source metadata.
+  final int sourceBackedBlockCount;
+
+  /// Number of source-backed blocks currently emitted from original source.
+  final int preservedSourceBlockCount;
+
+  /// Number of source-backed blocks whose semantic content changed since
+  /// decode.
+  final int changedSourceBlockCount;
+
+  /// Number of preserved raw Markdown blocks.
+  final int rawMarkdownBlockCount;
+
+  /// Preserved raw Markdown counts by raw kind.
+  final Map<String, int> rawMarkdownKinds;
+
+  /// Diagnostics from the inspection pass.
+  final List<BlockMarkdownFidelityIssue> issues;
+
+  /// Whether the report contains any warning.
+  bool get hasWarnings => issues.any(
+    (issue) => issue.severity == BlockMarkdownFidelitySeverity.warning,
+  );
 }
 
 final class _FormattedToken {

@@ -16,6 +16,7 @@ export 'src/controller/block_controller.dart';
 export 'src/model/block_types.dart';
 export 'src/model/editor_selection.dart';
 export 'src/markdown/block_markdown_codec.dart';
+export 'src/presentation/markdown_presentation_state.dart';
 export 'src/commands/editor_command_result.dart';
 export 'src/commands/editor_command_context.dart';
 export 'src/commands/editor_command.dart';

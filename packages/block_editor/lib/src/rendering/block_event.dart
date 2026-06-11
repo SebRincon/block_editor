@@ -127,6 +127,38 @@ final class TableColumnAlignmentChangedEvent extends BlockEvent {
   final String? alignment;
 }
 
+/// Emitted when a Markdown table column is resized.
+final class TableColumnResizedEvent extends BlockEvent {
+  /// Creates a [TableColumnResizedEvent] for the table identified by [blockId].
+  const TableColumnResizedEvent({
+    required super.blockId,
+    required this.columnIndex,
+    required this.width,
+  });
+
+  /// The resized column index.
+  final int columnIndex;
+
+  /// The committed column width in logical pixels.
+  final double width;
+}
+
+/// Emitted when a Markdown table row is resized.
+final class TableRowResizedEvent extends BlockEvent {
+  /// Creates a [TableRowResizedEvent] for the table identified by [blockId].
+  const TableRowResizedEvent({
+    required super.blockId,
+    required this.rowIndex,
+    required this.height,
+  });
+
+  /// The resized body row index.
+  final int rowIndex;
+
+  /// The committed row minimum height in logical pixels.
+  final double height;
+}
+
 /// Emitted when an editable fenced-code block changes.
 final class CodeBlockChangedEvent extends BlockEvent {
   /// Creates a [CodeBlockChangedEvent] for the code block identified by

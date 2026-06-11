@@ -68,6 +68,7 @@ void main() {
       expect(find.text('Delete block'), findsOneWidget);
       expect(find.text('Duplicate block'), findsOneWidget);
       expect(find.text('Turn into'), findsOneWidget);
+      expect(find.text('Align'), findsOneWidget);
       expect(find.text('Move up'), findsOneWidget);
       expect(find.text('Move down'), findsOneWidget);
     });
@@ -270,6 +271,36 @@ void main() {
       await tester.pump();
 
       expect(find.byType(ListView), findsWidgets);
+    });
+  });
+
+  group('BlockActionMenu — align', () {
+    testWidgets('sets block textAlign attribute from submenu', (tester) async {
+      var dismissed = false;
+      final ctrl = _ctrl([
+        BlockNode(
+          id: 'a',
+          type: BlockTypes.heading2,
+          delta: TextDelta.fromPlainText('Centered heading'),
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        _menuWidget(
+          ctrl: ctrl,
+          blockId: 'a',
+          onDismiss: () => dismissed = true,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.tap(find.text('Align'));
+      await tester.pump();
+      await tester.tap(find.text('Align center'));
+      await tester.pump();
+
+      expect(ctrl.document.blocks.single.attributes['textAlign'], 'center');
+      expect(dismissed, isTrue);
     });
   });
 

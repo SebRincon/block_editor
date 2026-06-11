@@ -39,7 +39,10 @@ void main() {
       await tester.pump();
 
       expect(find.text('Rendering Playground'), findsOneWidget);
+      expect(find.text('Compact reader'), findsOneWidget);
+      expect(find.text('Center content'), findsOneWidget);
       expect(find.text('Number marker Y'), findsOneWidget);
+      expect(find.textContaining('Fidelity:'), findsOneWidget);
       expect(find.byType(BlockEditorWidget), findsOneWidget);
       expect(find.widgetWithText(TextField, 'Markdown source'), findsOneWidget);
     });
@@ -61,10 +64,49 @@ void main() {
       final theme = tester.widget<MarkdownDocumentTheme>(
         find.byType(MarkdownDocumentTheme),
       );
+      expect(theme.data.density, MarkdownDocumentDensity.comfortable);
+      expect(
+        theme.data.contentAlignment,
+        MarkdownDocumentContentAlignment.centered,
+      );
       expect(theme.data.maxContentWidth, 1248);
+      expect(theme.data.blockSpacingScale, 1);
+      expect(theme.data.surfacePaddingScale, 1);
       expect(theme.data.bulletListMarkerVerticalOffset, -1.5);
       expect(theme.data.numberedListMarkerVerticalOffset, -2.0);
       expect(theme.data.listIndentWidth, 28);
+    });
+
+    testWidgets('compact reader and leading alignment update the theme', (
+      tester,
+    ) async {
+      _setWideView(tester);
+      await tester.pumpWidget(
+        _wrap(
+          RenderingPlaygroundSection(
+            themeMode: ThemeMode.dark,
+            onToggleTheme: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byType(Switch).at(3));
+      await tester.pump();
+      await tester.tap(find.byType(Switch).at(4));
+      await tester.pump();
+
+      final theme = tester.widget<MarkdownDocumentTheme>(
+        find.byType(MarkdownDocumentTheme),
+      );
+      expect(theme.data.density, MarkdownDocumentDensity.compact);
+      expect(
+        theme.data.contentAlignment,
+        MarkdownDocumentContentAlignment.leading,
+      );
+      expect(theme.data.blockSpacingScale, lessThan(1));
+      expect(theme.data.surfacePaddingScale, lessThan(1));
+      expect(theme.data.pagePadding.top, lessThan(28));
     });
 
     testWidgets('default fixture covers broad Markdown and block variants', (
@@ -155,6 +197,30 @@ void main() {
         editor.controller.document.blocks[1].type,
         BlockTypes.numberedList,
       );
+      expect(find.textContaining('Fidelity:'), findsOneWidget);
+    });
+
+    testWidgets('source pane reports source-preserved Markdown', (
+      tester,
+    ) async {
+      _setWideView(tester);
+      await tester.pumpWidget(
+        _wrap(
+          RenderingPlaygroundSection(
+            themeMode: ThemeMode.dark,
+            onToggleTheme: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Markdown source'),
+        '3. Original number',
+      );
+      await tester.pump();
+
+      expect(find.text('Fidelity: source preserved'), findsOneWidget);
     });
   });
 }

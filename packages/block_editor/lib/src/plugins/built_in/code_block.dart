@@ -220,19 +220,24 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
         border: Border.all(color: markdownTheme.codeBlockBorder),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        padding: markdownTheme.scaleSurfaceInsets(
+          const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        ),
         child: Stack(
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (showLanguageSelector) const SizedBox(height: 24),
+                if (showLanguageSelector)
+                  SizedBox(height: markdownTheme.scaleSurfaceDimension(24)),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (showLineNumbers)
                       Padding(
-                        padding: const EdgeInsets.only(right: 16),
+                        padding: EdgeInsets.only(
+                          right: markdownTheme.scaleSurfaceDimension(16),
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: List.generate(
@@ -317,9 +322,8 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
                       borderRadius: BorderRadius.circular(editorTheme.radiusSm),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 3,
+                      padding: markdownTheme.scaleSurfaceInsets(
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                       ),
                       child: Text(
                         _language,

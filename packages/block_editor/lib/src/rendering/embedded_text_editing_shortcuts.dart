@@ -8,8 +8,10 @@ import 'package:flutter/widgets.dart';
 /// shortcuts do not always deliver consistently inside nested editor surfaces.
 KeyEventResult handleEmbeddedTextEditingShortcut(
   TextEditingController controller,
-  KeyEvent event,
-) {
+  KeyEvent event, {
+  bool markdownFormatting = false,
+  ValueChanged<String>? onTextChanged,
+}) {
   if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
     return KeyEventResult.ignored;
   }
@@ -23,6 +25,22 @@ KeyEventResult handleEmbeddedTextEditingShortcut(
       hardware.isAltPressed || (!isMac && hardware.isControlPressed);
   final shiftPressed = hardware.isShiftPressed;
   final altPressed = hardware.isAltPressed;
+
+  if (event is KeyDownEvent &&
+      markdownFormatting &&
+      primaryPressed &&
+      !shiftPressed &&
+      !altPressed) {
+    final delimiter = switch (key) {
+      LogicalKeyboardKey.keyB => '**',
+      LogicalKeyboardKey.keyI => '*',
+      _ => null,
+    };
+    if (delimiter != null && _toggleMarkdownDelimiter(controller, delimiter)) {
+      onTextChanged?.call(controller.text);
+      return KeyEventResult.handled;
+    }
+  }
 
   if (primaryPressed && !altPressed && key == LogicalKeyboardKey.keyA) {
     _selectRange(controller, 0, controller.text.length);
@@ -114,6 +132,103 @@ KeyEventResult handleEmbeddedTextEditingShortcut(
   }
 
   return KeyEventResult.ignored;
+}
+
+bool _toggleMarkdownDelimiter(
+  TextEditingController controller,
+  String delimiter,
+) {
+  final value = controller.value;
+  final text = value.text;
+  final selection = value.selection;
+  if (!selection.isValid) return false;
+
+  final delimiterLength = delimiter.length;
+  final start = selection.start.clamp(0, text.length);
+  final end = selection.end.clamp(0, text.length);
+  if (start > end) return false;
+
+  if (start == end) {
+    final inserted = '$delimiter$delimiter';
+    controller.value = value.copyWith(
+      text: text.replaceRange(start, end, inserted),
+      selection: TextSelection.collapsed(offset: start + delimiterLength),
+      composing: TextRange.empty,
+    );
+    return true;
+  }
+
+  final selectedText = text.substring(start, end);
+  final hasOuterDelimiters =
+      start >= delimiterLength &&
+      end + delimiterLength <= text.length &&
+      _hasStandaloneDelimiterAt(text, start - delimiterLength, delimiter) &&
+      _hasStandaloneDelimiterAt(text, end, delimiter);
+  if (hasOuterDelimiters) {
+    final withoutEnd = text.replaceRange(end, end + delimiterLength, '');
+    final nextText = withoutEnd.replaceRange(
+      start - delimiterLength,
+      start,
+      '',
+    );
+    controller.value = value.copyWith(
+      text: nextText,
+      selection: TextSelection(
+        baseOffset: start - delimiterLength,
+        extentOffset: end - delimiterLength,
+      ),
+      composing: TextRange.empty,
+    );
+    return true;
+  }
+
+  final selectionIncludesDelimiters =
+      selectedText.length >= delimiterLength * 2 &&
+      _hasStandaloneDelimiterAt(selectedText, 0, delimiter) &&
+      _hasStandaloneDelimiterAt(
+        selectedText,
+        selectedText.length - delimiterLength,
+        delimiter,
+      );
+  if (selectionIncludesDelimiters) {
+    final unwrapped = selectedText.substring(
+      delimiterLength,
+      selectedText.length - delimiterLength,
+    );
+    controller.value = value.copyWith(
+      text: text.replaceRange(start, end, unwrapped),
+      selection: TextSelection(
+        baseOffset: start,
+        extentOffset: start + unwrapped.length,
+      ),
+      composing: TextRange.empty,
+    );
+    return true;
+  }
+
+  final wrapped = '$delimiter$selectedText$delimiter';
+  controller.value = value.copyWith(
+    text: text.replaceRange(start, end, wrapped),
+    selection: TextSelection(
+      baseOffset: start + delimiterLength,
+      extentOffset: end + delimiterLength,
+    ),
+    composing: TextRange.empty,
+  );
+  return true;
+}
+
+bool _hasStandaloneDelimiterAt(String text, int offset, String delimiter) {
+  if (offset < 0 || offset + delimiter.length > text.length) return false;
+  if (text.substring(offset, offset + delimiter.length) != delimiter) {
+    return false;
+  }
+  if (delimiter != '*') return true;
+  final previousIsStar = offset > 0 && text.codeUnitAt(offset - 1) == 0x2A;
+  final nextOffset = offset + delimiter.length;
+  final nextIsStar =
+      nextOffset < text.length && text.codeUnitAt(nextOffset) == 0x2A;
+  return !previousIsStar && !nextIsStar;
 }
 
 int _extent(TextEditingController controller) {

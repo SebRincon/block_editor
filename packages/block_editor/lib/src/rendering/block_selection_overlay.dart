@@ -3,7 +3,7 @@ library;
 import 'package:block_editor/block_editor.dart';
 import 'package:flutter/material.dart';
 
-/// Paints a full-width highlight rectangle behind a fully-covered block.
+/// Paints a stable highlight rectangle behind a block.
 ///
 /// Used by [BlockSelectionOverlay] when isCovered is true. Blocks that
 /// are only partially covered — the start and end blocks of an
@@ -11,22 +11,26 @@ import 'package:flutter/material.dart';
 /// do not use this painter.
 class SelectionHighlightPainter extends CustomPainter {
   /// Creates a [SelectionHighlightPainter] with the given [color].
-  const SelectionHighlightPainter({required this.color});
+  const SelectionHighlightPainter({
+    required this.color,
+    required this.isCovered,
+  });
 
   /// The color of the highlight rectangle.
   final Color color;
 
+  /// Whether the highlight should be painted.
+  final bool isCovered;
+
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(
-      Rect.fromLTWH(0, 1, size.width, size.height),
-      Paint()..color = color,
-    );
+    if (!isCovered || size.isEmpty) return;
+    canvas.drawRect(Offset.zero & size, Paint()..color = color);
   }
 
   @override
   bool shouldRepaint(SelectionHighlightPainter oldDelegate) {
-    return oldDelegate.color != color;
+    return oldDelegate.color != color || oldDelegate.isCovered != isCovered;
   }
 }
 
@@ -41,8 +45,9 @@ class SelectionHighlightPainter extends CustomPainter {
 /// [ExpandedSelection]) are highlighted inline by [RichTextRenderer]. This
 /// widget handles only fully-covered intermediate blocks.
 ///
-/// When [isCovered] is false the [child] is returned with zero overhead —
-/// no extra widget layers are introduced.
+/// The paint layer is kept in the tree even when [isCovered] is false so
+/// toggling bulk selection does not swap render object types or perturb the
+/// measured size of component blocks.
 class BlockSelectionOverlay extends StatelessWidget {
   /// Creates a [BlockSelectionOverlay] for [child].
   ///
@@ -69,9 +74,11 @@ class BlockSelectionOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!isCovered) return child;
     return CustomPaint(
-      painter: SelectionHighlightPainter(color: highlightColor),
+      painter: SelectionHighlightPainter(
+        color: highlightColor,
+        isCovered: isCovered,
+      ),
       child: child,
     );
   }

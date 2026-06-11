@@ -190,6 +190,43 @@ void main() {
       controller.dispose();
     });
 
+    test('space after todo marker inside bullet transforms to todo', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final bullet = BlockNode(
+        type: BlockTypes.bulletList,
+        attributes: const {'indent': 2},
+        delta: TextDelta.fromPlainText('[x]'),
+      );
+      controller.append(bullet);
+      controller.collapseSelection(bullet.id, 3);
+
+      ops.insertCharacter(' ');
+
+      final updated = controller.document.findById(bullet.id)!;
+      expect(updated.type, BlockTypes.todo);
+      expect(updated.attributes['checked'], isTrue);
+      expect(updated.attributes['indent'], 2);
+      expect(updated.delta?.plainText, '');
+      controller.dispose();
+    });
+
+    test('space after full todo marker transforms paragraph to todo', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = plainBlock('- [ ]');
+      controller.append(node);
+      controller.collapseSelection(node.id, 5);
+
+      ops.insertCharacter(' ');
+
+      final updated = controller.document.findById(node.id)!;
+      expect(updated.type, BlockTypes.todo);
+      expect(updated.attributes['checked'], isFalse);
+      expect(updated.delta?.plainText, '');
+      controller.dispose();
+    });
+
     test(
       'space after source markers transforms code, mermaid, and math blocks',
       () {
@@ -280,6 +317,46 @@ void main() {
       ops.backspace();
       expect(controller.document.blocks.length, 1);
       expect(controller.document.findById(node.id)!.delta!.plainText, 'abc');
+      controller.dispose();
+    });
+
+    test('dedents indented list item at offset 0', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = BlockNode(
+        type: BlockTypes.bulletList,
+        attributes: const {'indent': 2},
+        delta: TextDelta.fromPlainText('child'),
+      );
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
+
+      ops.backspace();
+
+      final updated = controller.document.findById(node.id)!;
+      expect(updated.type, BlockTypes.bulletList);
+      expect(updated.attributes['indent'], 1);
+      expect(updated.delta?.plainText, 'child');
+      controller.dispose();
+    });
+
+    test('converts top-level list item to paragraph at offset 0', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = BlockNode(
+        type: BlockTypes.todo,
+        attributes: const {'checked': true},
+        delta: TextDelta.fromPlainText('task'),
+      );
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
+
+      ops.backspace();
+
+      final updated = controller.document.findById(node.id)!;
+      expect(updated.type, BlockTypes.paragraph);
+      expect(updated.attributes, isEmpty);
+      expect(updated.delta?.plainText, 'task');
       controller.dispose();
     });
 
@@ -395,6 +472,38 @@ void main() {
       ops.insertNewline();
       expect(controller.document.blocks.length, 1);
       expect(controller.document.blocks.first.type, BlockTypes.paragraph);
+      controller.dispose();
+    });
+
+    test('dedents empty nested list block before exiting list', () {
+      final controller = makeController();
+      final ops = EditorEditingOperations(controller);
+      final node = BlockNode(
+        type: BlockTypes.todo,
+        attributes: const {'checked': true, 'indent': 2},
+        delta: TextDelta.empty(),
+      );
+      controller.append(node);
+      controller.collapseSelection(node.id, 0);
+
+      ops.insertNewline();
+
+      var updated = controller.document.findById(node.id)!;
+      expect(updated.type, BlockTypes.todo);
+      expect(updated.attributes['checked'], isFalse);
+      expect(updated.attributes['indent'], 1);
+
+      ops.insertNewline();
+
+      updated = controller.document.findById(node.id)!;
+      expect(updated.type, BlockTypes.todo);
+      expect(updated.attributes['indent'], isNull);
+
+      ops.insertNewline();
+
+      updated = controller.document.findById(node.id)!;
+      expect(updated.type, BlockTypes.paragraph);
+      expect(updated.attributes, isEmpty);
       controller.dispose();
     });
 

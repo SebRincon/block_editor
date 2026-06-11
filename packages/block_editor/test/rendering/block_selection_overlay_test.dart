@@ -18,7 +18,7 @@ Finder findHighlightPaint() {
 
 void main() {
   group('BlockSelectionOverlay — coverage', () {
-    testWidgets('returns child directly when isCovered is false', (
+    testWidgets('keeps a stable paint layer when isCovered is false', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -29,7 +29,10 @@ void main() {
           ),
         ),
       );
-      expect(findHighlightPaint(), findsNothing);
+      expect(findHighlightPaint(), findsOneWidget);
+      final customPaint = tester.widget<CustomPaint>(findHighlightPaint());
+      final painter = customPaint.painter! as SelectionHighlightPainter;
+      expect(painter.isCovered, isFalse);
       expect(find.text('block content'), findsOneWidget);
     });
 
@@ -61,6 +64,7 @@ void main() {
       final customPaint = tester.widget<CustomPaint>(findHighlightPaint());
       final painter = customPaint.painter! as SelectionHighlightPainter;
       expect(painter.color, const Color(0x663B82F6));
+      expect(painter.isCovered, isTrue);
     });
 
     testWidgets('uses supplied highlight color', (tester) async {
@@ -76,6 +80,37 @@ void main() {
       final customPaint = tester.widget<CustomPaint>(findHighlightPaint());
       final painter = customPaint.painter! as SelectionHighlightPainter;
       expect(painter.color, const Color(0x44FF0000));
+      expect(painter.isCovered, isTrue);
+    });
+  });
+
+  group('BlockSelectionOverlay — layout stability', () {
+    testWidgets('does not change child size when coverage toggles', (
+      tester,
+    ) async {
+      const key = ValueKey<String>('stable-child');
+
+      await tester.pumpWidget(
+        wrap(
+          const BlockSelectionOverlay(
+            isCovered: false,
+            child: SizedBox(key: key, width: 180, height: 48),
+          ),
+        ),
+      );
+      final sizeBefore = tester.getSize(find.byKey(key));
+
+      await tester.pumpWidget(
+        wrap(
+          const BlockSelectionOverlay(
+            isCovered: true,
+            child: SizedBox(key: key, width: 180, height: 48),
+          ),
+        ),
+      );
+      final sizeAfter = tester.getSize(find.byKey(key));
+
+      expect(sizeAfter, sizeBefore);
     });
   });
 
@@ -101,20 +136,48 @@ void main() {
 
   group('SelectionHighlightPainter — shouldRepaint', () {
     test('returns false when color is unchanged', () {
-      const painter = SelectionHighlightPainter(color: Color(0x443399FF));
+      const painter = SelectionHighlightPainter(
+        color: Color(0x443399FF),
+        isCovered: true,
+      );
       expect(
         painter.shouldRepaint(
-          const SelectionHighlightPainter(color: Color(0x443399FF)),
+          const SelectionHighlightPainter(
+            color: Color(0x443399FF),
+            isCovered: true,
+          ),
         ),
         isFalse,
       );
     });
 
     test('returns true when color changes', () {
-      const painter = SelectionHighlightPainter(color: Color(0x443399FF));
+      const painter = SelectionHighlightPainter(
+        color: Color(0x443399FF),
+        isCovered: true,
+      );
       expect(
         painter.shouldRepaint(
-          const SelectionHighlightPainter(color: Color(0x44FF0000)),
+          const SelectionHighlightPainter(
+            color: Color(0x44FF0000),
+            isCovered: true,
+          ),
+        ),
+        isTrue,
+      );
+    });
+
+    test('returns true when coverage changes', () {
+      const painter = SelectionHighlightPainter(
+        color: Color(0x443399FF),
+        isCovered: true,
+      );
+      expect(
+        painter.shouldRepaint(
+          const SelectionHighlightPainter(
+            color: Color(0x443399FF),
+            isCovered: false,
+          ),
         ),
         isTrue,
       );

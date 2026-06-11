@@ -293,7 +293,9 @@ class _CalloutBlockWidgetState extends State<_CalloutBlockWidget> {
     final delta = widget.node.delta ?? TextDelta.empty();
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 11, 13, 12),
+      padding: markdownTheme.scaleSurfaceInsets(
+        const EdgeInsets.fromLTRB(12, 11, 13, 12),
+      ),
       decoration: BoxDecoration(
         color: color,
         borderRadius: borderRadius,
@@ -309,7 +311,7 @@ class _CalloutBlockWidgetState extends State<_CalloutBlockWidget> {
             tone: tone,
             icon: icon,
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: markdownTheme.scaleSurfaceDimension(10)),
           Expanded(
             child: MouseRegion(
               cursor: SystemMouseCursors.text,
@@ -335,7 +337,7 @@ class _CalloutBlockWidgetState extends State<_CalloutBlockWidget> {
                           ),
                         ),
                   if (delta.plainText.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    SizedBox(height: markdownTheme.scaleSurfaceDimension(4)),
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTapDown: (details) => _handleBodyTapDown(

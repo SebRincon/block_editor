@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:block_editor/block_editor.dart';
 import 'package:flutter/material.dart';
 
+import '../storage/vten_reader_preferences_store.dart';
 import '../theme/app_theme.dart';
 
 /// Interactive Markdown rendering playground for tuning document tokens.
@@ -12,10 +14,12 @@ class RenderingPlaygroundSection extends StatefulWidget {
     super.key,
     required this.themeMode,
     required this.onToggleTheme,
+    this.preferencesStore,
   });
 
   final ThemeMode themeMode;
   final VoidCallback onToggleTheme;
+  final VtenReaderPreferencesStore? preferencesStore;
 
   @override
   State<RenderingPlaygroundSection> createState() =>
@@ -33,6 +37,9 @@ class _RenderingPlaygroundSectionState
   bool _readOnly = true;
   bool _showSource = true;
   bool _includeBlockOnlyShowcase = true;
+  MarkdownDocumentDensity _readerDensity = MarkdownDocumentDensity.comfortable;
+  MarkdownDocumentContentAlignment _contentAlignment =
+      MarkdownDocumentContentAlignment.centered;
   double _maxContentWidth = 1248;
   double _horizontalPadding = 32;
   double _verticalPadding = 28;
@@ -58,6 +65,7 @@ class _RenderingPlaygroundSectionState
     _sourceController = TextEditingController(text: _playgroundMarkdown);
     _controlsScrollController = ScrollController();
     _controller = BlockController(document: _buildDocumentFromSource());
+    _loadReaderPreferences();
     _changesSub = _controller.changes.listen((_) {
       if (_syncing) return;
       final markdown = BlockMarkdownCodec.encode(_controller.document);
@@ -68,6 +76,30 @@ class _RenderingPlaygroundSectionState
       );
       _syncing = false;
     });
+  }
+
+  Future<void> _loadReaderPreferences() async {
+    final store = widget.preferencesStore;
+    if (store == null) return;
+    final preferences = await store.load();
+    if (!mounted || preferences == null) return;
+    setState(() {
+      _readerDensity = preferences.density;
+      _contentAlignment = preferences.contentAlignment;
+    });
+  }
+
+  void _persistReaderPreferences() {
+    final store = widget.preferencesStore;
+    if (store == null) return;
+    unawaited(
+      store.save(
+        VtenReaderPreferences(
+          density: _readerDensity,
+          contentAlignment: _contentAlignment,
+        ),
+      ),
+    );
   }
 
   @override
@@ -314,6 +346,8 @@ Raw Markdown block inserted manually through BlockNode.
 
   void _resetTuning() {
     setState(() {
+      _readerDensity = MarkdownDocumentDensity.comfortable;
+      _contentAlignment = MarkdownDocumentContentAlignment.centered;
       _maxContentWidth = 1248;
       _horizontalPadding = 32;
       _verticalPadding = 28;
@@ -327,63 +361,78 @@ Raw Markdown block inserted manually through BlockNode.
       _tableTextSize = 14.5;
       _codeTextSize = 13.5;
     });
+    _persistReaderPreferences();
   }
 
   MarkdownDocumentThemeData _themeData(BuildContext context) {
     final base = MarkdownDocumentThemeData.defaults(context);
+    final compact = _readerDensity == MarkdownDocumentDensity.compact;
+    final fontScale = compact ? 0.94 : 1.0;
+    final paragraphSize = _paragraphSize * fontScale;
+    final paragraphHeight = compact
+        ? math.min(_paragraphHeight, 1.46)
+        : _paragraphHeight;
     final paragraph = base.paragraphStyle.copyWith(
-      fontSize: _paragraphSize,
-      height: _paragraphHeight,
+      fontSize: paragraphSize,
+      height: paragraphHeight,
     );
     return base.copyWith(
+      density: _readerDensity,
+      contentAlignment: _contentAlignment,
       maxContentWidth: _maxContentWidth,
       pagePadding: EdgeInsets.symmetric(
-        horizontal: _horizontalPadding,
-        vertical: _verticalPadding,
+        horizontal: compact ? _horizontalPadding * 0.74 : _horizontalPadding,
+        vertical: compact ? _verticalPadding * 0.58 : _verticalPadding,
       ),
+      blockSpacingScale: compact ? 0.58 : 1,
+      surfacePaddingScale: compact ? 0.78 : 1,
       paragraphStyle: paragraph,
       heading1Style: paragraph.copyWith(
-        fontSize: _paragraphSize * 1.94,
+        fontSize: paragraphSize * 1.94,
         height: 1.14,
         fontWeight: FontWeight.w700,
       ),
       heading2Style: paragraph.copyWith(
-        fontSize: _paragraphSize * 1.56,
+        fontSize: paragraphSize * 1.56,
         height: 1.18,
         fontWeight: FontWeight.w700,
       ),
       heading3Style: paragraph.copyWith(
-        fontSize: _paragraphSize * 1.25,
+        fontSize: paragraphSize * 1.25,
         height: 1.25,
         fontWeight: FontWeight.w600,
       ),
       heading4Style: paragraph.copyWith(
-        fontSize: _paragraphSize * 1.125,
+        fontSize: paragraphSize * 1.125,
         height: 1.28,
         fontWeight: FontWeight.w600,
       ),
       heading5Style: paragraph.copyWith(
-        fontSize: _paragraphSize,
+        fontSize: paragraphSize,
         height: 1.34,
         fontWeight: FontWeight.w600,
       ),
       heading6Style: paragraph.copyWith(
-        fontSize: _paragraphSize * 0.90,
+        fontSize: paragraphSize * 0.90,
         height: 1.35,
         fontWeight: FontWeight.w700,
         color: base.codeBlockMutedForeground,
       ),
       listMarkerStyle: paragraph.copyWith(color: base.codeBlockMutedForeground),
-      listIndentWidth: _listIndentWidth,
-      listMarkerWidth: _listMarkerWidth,
+      listIndentWidth: compact ? _listIndentWidth * 0.9 : _listIndentWidth,
+      listMarkerWidth: compact ? _listMarkerWidth * 0.9 : _listMarkerWidth,
       bulletListMarkerVerticalOffset: _bulletMarkerY,
       numberedListMarkerVerticalOffset: _numberMarkerY,
       todoMarkerVerticalOffset: _todoMarkerY,
-      tableCellStyle: base.tableCellStyle.copyWith(fontSize: _tableTextSize),
-      tableHeaderStyle: base.tableHeaderStyle.copyWith(
-        fontSize: _tableTextSize - 1,
+      tableCellStyle: base.tableCellStyle.copyWith(
+        fontSize: compact ? _tableTextSize * 0.94 : _tableTextSize,
       ),
-      inlineCodeStyle: base.inlineCodeStyle.copyWith(fontSize: _codeTextSize),
+      tableHeaderStyle: base.tableHeaderStyle.copyWith(
+        fontSize: compact ? (_tableTextSize - 1) * 0.94 : _tableTextSize - 1,
+      ),
+      inlineCodeStyle: base.inlineCodeStyle.copyWith(
+        fontSize: compact ? _codeTextSize * 0.94 : _codeTextSize,
+      ),
       codeBlockForeground: base.codeBlockForeground,
     );
   }
@@ -412,6 +461,11 @@ Raw Markdown block inserted manually through BlockNode.
                 readOnly: _readOnly,
                 showSource: _showSource,
                 includeBlockOnlyShowcase: _includeBlockOnlyShowcase,
+                compactReader:
+                    _readerDensity == MarkdownDocumentDensity.compact,
+                centerContent:
+                    _contentAlignment ==
+                    MarkdownDocumentContentAlignment.centered,
                 maxContentWidth: _maxContentWidth,
                 horizontalPadding: _horizontalPadding,
                 verticalPadding: _verticalPadding,
@@ -430,6 +484,22 @@ Raw Markdown block inserted manually through BlockNode.
                 onIncludeBlockOnlyChanged: (value) {
                   setState(() => _includeBlockOnlyShowcase = value);
                   _replaceDocumentFromSource();
+                },
+                onCompactReaderChanged: (value) {
+                  setState(() {
+                    _readerDensity = value
+                        ? MarkdownDocumentDensity.compact
+                        : MarkdownDocumentDensity.comfortable;
+                  });
+                  _persistReaderPreferences();
+                },
+                onCenterContentChanged: (value) {
+                  setState(() {
+                    _contentAlignment = value
+                        ? MarkdownDocumentContentAlignment.centered
+                        : MarkdownDocumentContentAlignment.leading;
+                  });
+                  _persistReaderPreferences();
                 },
                 onMaxContentWidthChanged: (value) =>
                     setState(() => _maxContentWidth = value),
@@ -570,6 +640,8 @@ class _ControlsPane extends StatelessWidget {
     required this.readOnly,
     required this.showSource,
     required this.includeBlockOnlyShowcase,
+    required this.compactReader,
+    required this.centerContent,
     required this.maxContentWidth,
     required this.horizontalPadding,
     required this.verticalPadding,
@@ -585,6 +657,8 @@ class _ControlsPane extends StatelessWidget {
     required this.onReadOnlyChanged,
     required this.onShowSourceChanged,
     required this.onIncludeBlockOnlyChanged,
+    required this.onCompactReaderChanged,
+    required this.onCenterContentChanged,
     required this.onMaxContentWidthChanged,
     required this.onHorizontalPaddingChanged,
     required this.onVerticalPaddingChanged,
@@ -604,6 +678,8 @@ class _ControlsPane extends StatelessWidget {
   final bool readOnly;
   final bool showSource;
   final bool includeBlockOnlyShowcase;
+  final bool compactReader;
+  final bool centerContent;
   final double maxContentWidth;
   final double horizontalPadding;
   final double verticalPadding;
@@ -619,6 +695,8 @@ class _ControlsPane extends StatelessWidget {
   final ValueChanged<bool> onReadOnlyChanged;
   final ValueChanged<bool> onShowSourceChanged;
   final ValueChanged<bool> onIncludeBlockOnlyChanged;
+  final ValueChanged<bool> onCompactReaderChanged;
+  final ValueChanged<bool> onCenterContentChanged;
   final ValueChanged<double> onMaxContentWidthChanged;
   final ValueChanged<double> onHorizontalPaddingChanged;
   final ValueChanged<double> onVerticalPaddingChanged;
@@ -656,6 +734,16 @@ class _ControlsPane extends StatelessWidget {
               label: 'Block-only blocks',
               value: includeBlockOnlyShowcase,
               onChanged: onIncludeBlockOnlyChanged,
+            ),
+            _SwitchTile(
+              label: 'Compact reader',
+              value: compactReader,
+              onChanged: onCompactReaderChanged,
+            ),
+            _SwitchTile(
+              label: 'Center content',
+              value: centerContent,
+              onChanged: onCenterContentChanged,
             ),
             _ControlGroup(
               title: 'Layout',
@@ -799,9 +887,15 @@ class _PreviewPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final alignment =
+        markdownTheme.contentAlignment ==
+            MarkdownDocumentContentAlignment.centered
+        ? Alignment.topCenter
+        : Alignment.topLeft;
     return ColoredBox(
       color: colors.background,
-      child: Center(
+      child: Align(
+        alignment: alignment,
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: markdownTheme.maxContentWidth),
           child: MarkdownDocumentTheme(
@@ -838,23 +932,108 @@ class _SourcePane extends StatelessWidget {
     return Container(
       color: colors.surface,
       padding: const EdgeInsets.all(14),
-      child: TextField(
-        controller: controller,
-        expands: true,
-        maxLines: null,
-        minLines: null,
-        onChanged: onChanged,
-        textAlignVertical: TextAlignVertical.top,
-        style: const TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 13,
-          height: 1.45,
-        ),
-        decoration: InputDecoration(
-          labelText: 'Markdown source',
-          alignLabelWithHint: true,
-          fillColor: colors.background,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, _) {
+          final report = BlockMarkdownCodec.inspect(value.text);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _FidelitySummary(colors: colors, report: report),
+              const SizedBox(height: 10),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  expands: true,
+                  maxLines: null,
+                  minLines: null,
+                  onChanged: onChanged,
+                  textAlignVertical: TextAlignVertical.top,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Markdown source',
+                    alignLabelWithHint: true,
+                    fillColor: colors.background,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _FidelitySummary extends StatelessWidget {
+  const _FidelitySummary({required this.colors, required this.report});
+
+  final AppColors colors;
+  final BlockMarkdownFidelityReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = report.roundTripsExactly
+        ? const Color(0xFF22C55E)
+        : const Color(0xFFF59E0B);
+    final statusLabel = report.roundTripsExactly
+        ? report.normalizedRoundTripsExactly
+              ? 'Fidelity: exact round trip'
+              : 'Fidelity: source preserved'
+        : 'Fidelity: normalized output';
+    final rawKinds = report.rawMarkdownKinds.entries
+        .map((entry) => '${entry.key} ${entry.value}')
+        .join('  ');
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.background,
+        border: Border.all(color: colors.border),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: DefaultTextStyle(
+          style: TextStyle(color: colors.textMuted, fontSize: 11, height: 1.35),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    statusLabel,
+                    style: TextStyle(
+                      color: colors.text,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Text(
+                'Blocks ${report.blockCount}  Raw ${report.rawMarkdownBlockCount}'
+                '  Source ${report.preservedSourceBlockCount}/${report.sourceBackedBlockCount}'
+                '${report.changedSourceBlockCount == 0 ? '' : '  Changed ${report.changedSourceBlockCount}'}'
+                '${rawKinds.isEmpty ? '' : '  $rawKinds'}',
+              ),
+            ],
+          ),
         ),
       ),
     );

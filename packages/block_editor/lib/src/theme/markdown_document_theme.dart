@@ -4,6 +4,24 @@ import 'package:flutter/material.dart' as material;
 
 import 'block_editor_theme.dart';
 
+/// Layout density for Markdown reader/editor surfaces.
+enum MarkdownDocumentDensity {
+  /// Default document rhythm with generous spacing for active editing.
+  comfortable,
+
+  /// Tighter document rhythm for reading dense Markdown notes.
+  compact,
+}
+
+/// Horizontal placement of the Markdown document inside its host viewport.
+enum MarkdownDocumentContentAlignment {
+  /// Keep the document anchored to the leading edge.
+  leading,
+
+  /// Center the document within the available reader viewport.
+  centered,
+}
+
 /// Document-specific styling tokens for Markdown editing and preview surfaces.
 ///
 /// These tokens are derived from the shared shadcn-backed
@@ -11,8 +29,12 @@ import 'block_editor_theme.dart';
 /// still using a calmer, readable note layout instead of code-editor styling.
 final class MarkdownDocumentThemeData {
   const MarkdownDocumentThemeData({
+    this.density = MarkdownDocumentDensity.comfortable,
+    this.contentAlignment = MarkdownDocumentContentAlignment.centered,
     required this.maxContentWidth,
     required this.pagePadding,
+    required this.blockSpacingScale,
+    required this.surfacePaddingScale,
     required this.paragraphStyle,
     required this.heading1Style,
     required this.heading2Style,
@@ -57,8 +79,12 @@ final class MarkdownDocumentThemeData {
     required this.neutralCallout,
   });
 
+  final MarkdownDocumentDensity density;
+  final MarkdownDocumentContentAlignment contentAlignment;
   final double maxContentWidth;
   final material.EdgeInsets pagePadding;
+  final double blockSpacingScale;
+  final double surfacePaddingScale;
   final material.TextStyle paragraphStyle;
   final material.TextStyle heading1Style;
   final material.TextStyle heading2Style;
@@ -159,10 +185,14 @@ final class MarkdownDocumentThemeData {
 
     return MarkdownDocumentThemeData(
       maxContentWidth: 1248,
+      density: MarkdownDocumentDensity.comfortable,
+      contentAlignment: MarkdownDocumentContentAlignment.centered,
       pagePadding: const material.EdgeInsets.symmetric(
         horizontal: 32,
         vertical: 28,
       ),
+      blockSpacingScale: 1,
+      surfacePaddingScale: 1,
       paragraphStyle: paragraph,
       heading1Style: paragraph.copyWith(
         fontSize: 31,
@@ -253,8 +283,12 @@ final class MarkdownDocumentThemeData {
 
   /// Returns a copy with selected Markdown document tokens replaced.
   MarkdownDocumentThemeData copyWith({
+    MarkdownDocumentDensity? density,
+    MarkdownDocumentContentAlignment? contentAlignment,
     double? maxContentWidth,
     material.EdgeInsets? pagePadding,
+    double? blockSpacingScale,
+    double? surfacePaddingScale,
     material.TextStyle? paragraphStyle,
     material.TextStyle? heading1Style,
     material.TextStyle? heading2Style,
@@ -299,8 +333,12 @@ final class MarkdownDocumentThemeData {
     MarkdownCalloutTone? neutralCallout,
   }) {
     return MarkdownDocumentThemeData(
+      density: density ?? this.density,
+      contentAlignment: contentAlignment ?? this.contentAlignment,
       maxContentWidth: maxContentWidth ?? this.maxContentWidth,
       pagePadding: pagePadding ?? this.pagePadding,
+      blockSpacingScale: blockSpacingScale ?? this.blockSpacingScale,
+      surfacePaddingScale: surfacePaddingScale ?? this.surfacePaddingScale,
       paragraphStyle: paragraphStyle ?? this.paragraphStyle,
       heading1Style: heading1Style ?? this.heading1Style,
       heading2Style: heading2Style ?? this.heading2Style,
@@ -352,6 +390,21 @@ final class MarkdownDocumentThemeData {
       neutralCallout: neutralCallout ?? this.neutralCallout,
     );
   }
+
+  /// Scales component padding by [surfacePaddingScale].
+  material.EdgeInsets scaleSurfaceInsets(material.EdgeInsets insets) {
+    final scale = surfacePaddingScale;
+    if (scale == 1) return insets;
+    return material.EdgeInsets.fromLTRB(
+      insets.left * scale,
+      insets.top * scale,
+      insets.right * scale,
+      insets.bottom * scale,
+    );
+  }
+
+  /// Scales component dimensions by [surfacePaddingScale].
+  double scaleSurfaceDimension(double value) => value * surfacePaddingScale;
 
   MarkdownCalloutTone calloutTone(String variant) {
     switch (variant.trim().toLowerCase()) {

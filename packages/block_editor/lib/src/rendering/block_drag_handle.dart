@@ -269,9 +269,10 @@ class _DropIndicator extends StatelessWidget {
 /// The ghost widget shown under the pointer during a block drag.
 ///
 /// Renders [node] via [BlockRenderer] at reduced opacity inside a
-/// [Material] card with a soft shadow. [BlockDragHandle] wraps this
-/// in an additional [SizedBox] with the measured row width so the
-/// ghost always matches the actual editor content width.
+/// [Material] card with a soft shadow. [width] is treated as the maximum
+/// available document width; shrink-wrapped block types use their natural
+/// content width so short paragraphs, headings, and tables do not drag as a
+/// full-width row.
 class BlockGhost extends StatelessWidget {
   /// Creates a [BlockGhost] for [node].
   const BlockGhost({super.key, required this.node, required this.width});
@@ -279,14 +280,25 @@ class BlockGhost extends StatelessWidget {
   /// The block node to render in the ghost.
   final BlockNode node;
 
-  /// The width of the ghost, matching the editor content width.
+  /// The maximum width of the ghost, matching the editor content column.
   final double width;
 
   @override
   Widget build(BuildContext context) {
     final editorTheme = BlockEditorThemeData.fromContext(context);
-    return SizedBox(
-      width: width,
+    final markdownTheme = MarkdownDocumentThemeData.fromContext(context);
+    final renderedBlock = _shrinkWrapsToContent
+        ? IntrinsicWidth(
+            child: BlockRenderer(node: node, onEvent: (_) {}),
+          )
+        : SizedBox(
+            width: double.infinity,
+            child: BlockRenderer(node: node, onEvent: (_) {}),
+          );
+
+    return ConstrainedBox(
+      key: const ValueKey('block-editor-block-ghost-shell'),
+      constraints: BoxConstraints(minWidth: 120, maxWidth: width),
       child: Material(
         elevation: 4,
         color: editorTheme.popover,
@@ -298,11 +310,34 @@ class BlockGhost extends StatelessWidget {
         child: Opacity(
           opacity: 0.8,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: BlockRenderer(node: node, onEvent: (_) {}),
+            padding: markdownTheme.scaleSurfaceInsets(
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            ),
+            child: renderedBlock,
           ),
         ),
       ),
     );
+  }
+
+  bool get _shrinkWrapsToContent {
+    return switch (node.type) {
+      BlockTypes.paragraph ||
+      BlockTypes.heading1 ||
+      BlockTypes.heading2 ||
+      BlockTypes.heading3 ||
+      BlockTypes.heading4 ||
+      BlockTypes.heading5 ||
+      BlockTypes.heading6 ||
+      BlockTypes.quote ||
+      BlockTypes.table ||
+      BlockTypes.divider ||
+      BlockTypes.image ||
+      BlockTypes.link ||
+      BlockTypes.video ||
+      BlockTypes.youtube ||
+      BlockTypes.file => true,
+      _ => false,
+    };
   }
 }

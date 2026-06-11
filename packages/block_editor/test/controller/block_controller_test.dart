@@ -45,6 +45,10 @@ void main() {
       final event = await eventFuture;
       expect(event.type, ChangeType.insert);
       expect(event.affectedIds, contains('ev'));
+      expect(event.operations.single.type, BlockOperationType.insert);
+      expect(event.operations.single.blockId, 'ev');
+      expect(event.operations.single.toIndex, 0);
+      expect(event.operations.single.after?.id, 'ev');
     });
   });
 
@@ -87,7 +91,11 @@ void main() {
       final id = controller.document.blocks.first.id;
       final eventFuture = controller.changes.first;
       controller.delete(id);
-      expect((await eventFuture).type, ChangeType.delete);
+      final event = await eventFuture;
+      expect(event.type, ChangeType.delete);
+      expect(event.operations.single.type, BlockOperationType.delete);
+      expect(event.operations.single.blockId, id);
+      expect(event.operations.single.before?.id, id);
     });
   });
 
@@ -109,6 +117,23 @@ void main() {
       final before = controller.document;
       controller.update('bogus', paragraph());
       expect(controller.document, equals(before));
+    });
+
+    test('emits update operation with before and after blocks', () async {
+      final id = controller.document.blocks.first.id;
+      final eventFuture = controller.changes.first;
+      controller.update(
+        id,
+        BlockNode(
+          id: id,
+          type: 'heading1',
+          delta: TextDelta.fromPlainText('Title'),
+        ),
+      );
+      final op = (await eventFuture).operations.single;
+      expect(op.type, BlockOperationType.update);
+      expect(op.before?.type, 'paragraph');
+      expect(op.after?.type, 'heading1');
     });
   });
 
@@ -170,6 +195,17 @@ void main() {
     test('throws StateError for non-root block', () {
       expect(() => controller.move('nonroot', 0), throwsStateError);
     });
+
+    test('emits move operation with source and target indices', () async {
+      final firstId = controller.document.blocks.first.id;
+      final eventFuture = controller.changes.first;
+      controller.move(firstId, 2);
+      final op = (await eventFuture).operations.single;
+      expect(op.type, BlockOperationType.move);
+      expect(op.blockId, firstId);
+      expect(op.fromIndex, 0);
+      expect(op.toIndex, 2);
+    });
   });
 
   group('undo / redo', () {
@@ -205,7 +241,9 @@ void main() {
       controller.append(paragraph());
       final eventFuture = controller.changes.first;
       controller.undo();
-      expect((await eventFuture).type, ChangeType.replace);
+      final event = await eventFuture;
+      expect(event.type, ChangeType.replace);
+      expect(event.operations.single.type, BlockOperationType.replace);
     });
   });
 
@@ -222,6 +260,14 @@ void main() {
       controller.replaceDocument(BlockDocument([BlockNode(type: 'heading1')]));
       controller.undo();
       expect(controller.document, equals(original));
+    });
+
+    test('replacement can skip undo history', () {
+      controller.replaceDocument(
+        BlockDocument([BlockNode(type: 'heading1')]),
+        recordUndo: false,
+      );
+      expect(controller.canUndo, isFalse);
     });
   });
 

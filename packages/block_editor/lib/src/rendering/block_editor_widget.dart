@@ -1,6 +1,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
@@ -238,15 +239,22 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     _changesSub = widget.controller.changes.listen((change) {
       if (!mounted) return;
       if (change.type != ChangeType.update) setState(() {});
+      _ensureIMEConnectionForSelection();
       _syncIMEState();
     });
     _selectionSub = widget.controller.selectionStream.listen((sel) {
       if (!mounted) return;
       setState(() {});
+      _ensureIMEConnectionForSelection();
       _syncIMEState();
       _updateToolbarVisibility(sel);
     });
     _updateToolbarVisibility(widget.controller.selection);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _ensureIMEConnectionForSelection();
+      _syncIMEState();
+    });
   }
 
   @override
@@ -260,11 +268,13 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       _changesSub = widget.controller.changes.listen((change) {
         if (!mounted) return;
         if (change.type != ChangeType.update) setState(() {});
+        _ensureIMEConnectionForSelection();
         _syncIMEState();
       });
       _selectionSub = widget.controller.selectionStream.listen((sel) {
         if (!mounted) return;
         setState(() {});
+        _ensureIMEConnectionForSelection();
         _syncIMEState();
         _updateToolbarVisibility(sel);
       });
@@ -275,6 +285,11 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       _ownsFocusNode = widget.focusNode == null;
       _focusNode = widget.focusNode ?? FocusNode();
       _focusNode.addListener(_onFocusChange);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _ensureIMEConnectionForSelection();
+        _syncIMEState();
+      });
     }
     if (oldWidget.scrollController != widget.scrollController) {
       if (widget.scrollController == null &&
@@ -470,6 +485,15 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     );
     _inputConnection!.show();
     _syncIMEState();
+  }
+
+  void _ensureIMEConnectionForSelection() {
+    if (!_focusNode.hasFocus) return;
+    if (widget.readOnly || _embeddedInputFocusDepth > 0) return;
+    if (widget.controller.selection is! CollapsedSelection) return;
+    final connection = _inputConnection;
+    if (connection != null && connection.attached) return;
+    _openIMEConnection();
   }
 
   void _closeIMEConnection() {
@@ -748,6 +772,10 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
         _deleteTableColumn(event);
       case TableColumnAlignmentChangedEvent():
         _alignTableColumn(event);
+      case TableColumnResizedEvent():
+        _resizeTableColumn(event);
+      case TableRowResizedEvent():
+        _resizeTableRow(event);
       case CodeBlockChangedEvent():
         _updateCodeBlock(event);
       case MathBlockChangedEvent():
@@ -816,6 +844,10 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     widget.controller.updateAttributes(event.blockId, {
       'headers': headers,
       'rows': rows,
+      'tableRowHeights': _insertDimensionAttribute(
+        node.attributes['tableRowHeights'],
+        index,
+      ),
     });
   }
 
@@ -834,6 +866,10 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     final updatedAttributes = <String, dynamic>{
       'headers': headers,
       'rows': rows,
+      'tableColumnWidths': _insertDimensionAttribute(
+        node.attributes['tableColumnWidths'],
+        index,
+      ),
     };
     final alignments = _tableAlignments(node);
     if (alignments.isNotEmpty) {
@@ -860,6 +896,10 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     widget.controller.updateAttributes(event.blockId, {
       'headers': headers,
       'rows': rows,
+      'tableRowHeights': _deleteDimensionAttribute(
+        node.attributes['tableRowHeights'],
+        index,
+      ),
     });
   }
 
@@ -880,6 +920,10 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
     final updatedAttributes = <String, dynamic>{
       'headers': headers,
       'rows': rows,
+      'tableColumnWidths': _deleteDimensionAttribute(
+        node.attributes['tableColumnWidths'],
+        index,
+      ),
     };
     final alignments = _tableAlignments(node);
     if (alignments.isNotEmpty) {
@@ -909,6 +953,30 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
 
     widget.controller.updateAttributes(event.blockId, {
       'alignments': alignments,
+    });
+  }
+
+  void _resizeTableColumn(TableColumnResizedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.table) return;
+    final headers = _tableHeaders(node);
+    if (event.columnIndex < 0 || event.columnIndex >= headers.length) return;
+    final widths = _tableDimensionMap(node.attributes['tableColumnWidths']);
+    widths[event.columnIndex] = event.width;
+    widget.controller.updateAttributes(event.blockId, {
+      'tableColumnWidths': _dimensionAttributeMap(widths),
+    });
+  }
+
+  void _resizeTableRow(TableRowResizedEvent event) {
+    final node = widget.controller.document.findById(event.blockId);
+    if (node == null || node.type != BlockTypes.table) return;
+    final rows = _tableRows(node, _tableHeaders(node).length);
+    if (event.rowIndex < 0 || event.rowIndex >= rows.length) return;
+    final heights = _tableDimensionMap(node.attributes['tableRowHeights']);
+    heights[event.rowIndex] = event.height;
+    widget.controller.updateAttributes(event.blockId, {
+      'tableRowHeights': _dimensionAttributeMap(heights),
     });
   }
 
@@ -1423,20 +1491,30 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   int _listIndentLevel(BlockNode block) =>
       (block.attributes['indent'] as int? ?? 0).clamp(0, 8).toInt();
 
-  EdgeInsets _spacingForBlock(List<BlockNode> blocks, int index) {
+  EdgeInsets _spacingForBlock(
+    BuildContext context,
+    List<BlockNode> blocks,
+    int index,
+  ) {
     final type = blocks[index].type;
     final previousType = index > 0 ? blocks[index - 1].type : null;
     final nextType = index < blocks.length - 1 ? blocks[index + 1].type : null;
     final first = index == 0;
+    final spacingScale = MarkdownDocumentThemeData.fromContext(
+      context,
+    ).blockSpacingScale;
 
     if (_isListType(type)) {
-      return EdgeInsets.only(
-        top: _isListType(previousType) ? 0 : 4,
-        bottom: _isListType(nextType) ? 3 : 10,
+      return _scaleVerticalSpacing(
+        EdgeInsets.only(
+          top: _isListType(previousType) ? 0 : 4,
+          bottom: _isListType(nextType) ? 3 : 10,
+        ),
+        spacingScale,
       );
     }
 
-    return switch (type) {
+    return _scaleVerticalSpacing(switch (type) {
       BlockTypes.heading1 => EdgeInsets.only(top: first ? 0 : 26, bottom: 10),
       BlockTypes.heading2 => EdgeInsets.only(top: first ? 0 : 22, bottom: 8),
       BlockTypes.heading3 => EdgeInsets.only(top: first ? 0 : 18, bottom: 6),
@@ -1452,7 +1530,23 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
       BlockTypes.table => const EdgeInsets.only(top: 10, bottom: 14),
       BlockTypes.divider => const EdgeInsets.symmetric(vertical: 14),
       _ => const EdgeInsets.only(top: 4, bottom: 10),
-    };
+    }, spacingScale);
+  }
+
+  EdgeInsets _scaleVerticalSpacing(EdgeInsets insets, double scale) {
+    if (scale == 1) return insets;
+    return EdgeInsets.fromLTRB(
+      insets.left,
+      insets.top * scale,
+      insets.right,
+      insets.bottom * scale,
+    );
+  }
+
+  double _dragGhostMaxWidth() {
+    final editorWidth = _editorWidth();
+    final paddedWidth = editorWidth - widget.padding.horizontal - 54;
+    return math.max(160, paddedWidth);
   }
 
   bool _isListType(String? type) {
@@ -1480,7 +1574,15 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
   }
 
   double _editorWidth() {
-    final box = _editorKey.currentContext?.findRenderObject() as RenderBox?;
+    final context = _editorKey.currentContext;
+    if (context == null || !context.mounted) return widget.toolbarBreakpoint;
+    final RenderObject? renderObject;
+    try {
+      renderObject = context.findRenderObject();
+    } on FlutterError {
+      return widget.toolbarBreakpoint;
+    }
+    final box = renderObject as RenderBox?;
     if (box == null || !box.hasSize) return widget.toolbarBreakpoint;
     return box.size.width;
   }
@@ -1523,7 +1625,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
           blockIdResolver: (dragIndex) =>
               dragIndex < blocks.length ? blocks[dragIndex].id : null,
           child: Padding(
-            padding: _spacingForBlock(blocks, index),
+            padding: _spacingForBlock(context, blocks, index),
             child: BlockDragHandle(
               key: ValueKey('handle_${rawNode.id}'),
               index: index,
@@ -1536,7 +1638,7 @@ class _BlockEditorWidgetState extends State<BlockEditorWidget>
                   : () => _insertParagraphAfterBlock(rawNode.id),
               feedbackWidget: BlockGhost(
                 node: rawNode,
-                width: MediaQuery.of(context).size.width,
+                width: _dragGhostMaxWidth(),
               ),
               child: KeyedSubtree(
                 key: blockKey,
@@ -1665,6 +1767,51 @@ List<String> _tableAlignments(BlockNode node) {
   return raw.map((item) => item?.toString() ?? '').toList();
 }
 
+Map<int, double> _tableDimensionMap(Object? raw) {
+  if (raw is! Map) return <int, double>{};
+  final result = <int, double>{};
+  for (final entry in raw.entries) {
+    final index = int.tryParse(entry.key.toString());
+    final dimension = _parseDimension(entry.value);
+    if (index == null || dimension == null || !dimension.isFinite) continue;
+    result[index] = dimension;
+  }
+  return result;
+}
+
+Map<String, double> _dimensionAttributeMap(Map<int, double> dimensions) {
+  return {
+    for (final entry in dimensions.entries)
+      if (entry.value.isFinite) entry.key.toString(): entry.value,
+  };
+}
+
+Map<String, double> _insertDimensionAttribute(Object? raw, int index) {
+  final dimensions = _tableDimensionMap(raw);
+  if (dimensions.isEmpty) return const {};
+  final shifted = <int, double>{};
+  for (final entry in dimensions.entries) {
+    shifted[entry.key >= index ? entry.key + 1 : entry.key] = entry.value;
+  }
+  return _dimensionAttributeMap(shifted);
+}
+
+Map<String, double> _deleteDimensionAttribute(Object? raw, int index) {
+  final dimensions = _tableDimensionMap(raw);
+  if (dimensions.isEmpty) return const {};
+  final shifted = <int, double>{};
+  for (final entry in dimensions.entries) {
+    if (entry.key == index) continue;
+    shifted[entry.key > index ? entry.key - 1 : entry.key] = entry.value;
+  }
+  return _dimensionAttributeMap(shifted);
+}
+
+double? _parseDimension(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '');
+}
+
 List<String> _normalizeTableRow(Iterable<Object?> row, int columnCount) {
   final cells = row.map((item) => item?.toString() ?? '').toList();
   if (cells.length == columnCount) return cells;
@@ -1758,18 +1905,21 @@ class _BlockItemWidgetState extends State<_BlockItemWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveSelection = widget.covered
+        ? EditorSelection.none
+        : widget.selection;
     return BlockSelectionOverlay(
       isCovered: widget.covered,
       highlightColor: widget.selectionColor,
       child: BlockCursor(
         blockId: _node.id,
         delta: _node.delta ?? TextDelta.empty(),
-        selection: widget.selection,
+        selection: effectiveSelection,
         cursorColor: widget.cursorColor,
         child: BlockRenderer(
           node: _node,
           onEvent: widget.onEvent,
-          selection: widget.selection,
+          selection: effectiveSelection,
         ),
       ),
     );

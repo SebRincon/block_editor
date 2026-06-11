@@ -275,6 +275,23 @@ void main() {
       await tester.pumpWidget(wrap(BlockGhost(node: node, width: 700)));
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('shrink-wraps content-sized blocks', (tester) async {
+      final node = BlockNode(
+        id: 'b1',
+        type: BlockTypes.heading2,
+        delta: TextDelta.fromPlainText('Short title'),
+      );
+      await tester.pumpWidget(
+        wrap(Center(child: BlockGhost(node: node, width: 700))),
+      );
+
+      final size = tester.getSize(
+        find.byKey(const ValueKey('block-editor-block-ghost-shell')),
+      );
+      expect(size.width, lessThan(700));
+      expect(size.width, greaterThanOrEqualTo(120));
+    });
   });
 
   group('BlockReorderedEvent', () {

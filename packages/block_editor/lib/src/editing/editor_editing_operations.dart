@@ -60,6 +60,7 @@ class EditorEditingOperations {
     final offset = sel.point.offset;
     final node = controller.document.findById(blockId);
     if (node == null) return;
+    if (offset == 0 && _handleListBackspace(node)) return;
     if (offset > 0) {
       final delta = node.delta ?? TextDelta.empty();
       final newOps = _deleteRangeFromOps(delta.ops, offset - 1, offset);
@@ -120,7 +121,8 @@ class EditorEditingOperations {
     final delta = node.delta ?? TextDelta.empty();
     final isListType = _isListType(node.type);
     if (isListType && delta.isEmpty) {
-      controller.transformType(blockId, BlockTypes.paragraph);
+      if (_dedentEmptyListItem(node)) return;
+      _replaceWithParagraph(node, delta: delta);
       controller.collapseSelection(blockId, 0);
       return;
     }
@@ -172,10 +174,28 @@ class EditorEditingOperations {
   }
 
   bool _tryApplyMarkdownShortcut(BlockNode node, int offset) {
-    if (node.type != BlockTypes.paragraph) return false;
     final text = node.delta?.plainText ?? '';
     if (offset != text.length) return false;
     final marker = text.substring(0, offset);
+    final todoReplacement = _todoShortcutReplacement(marker);
+    if (todoReplacement != null &&
+        (node.type == BlockTypes.paragraph ||
+            node.type == BlockTypes.bulletList)) {
+      controller.update(
+        node.id,
+        node.copyWith(
+          type: BlockTypes.todo,
+          attributes: {
+            ..._indentAttributes(node),
+            'checked': todoReplacement.checked,
+          },
+          delta: TextDelta.empty(),
+        ),
+      );
+      controller.collapseSelection(node.id, 0);
+      return true;
+    }
+    if (node.type != BlockTypes.paragraph) return false;
     final replacement = _markdownShortcutReplacement(marker);
     if (replacement == null) return false;
 
@@ -202,6 +222,18 @@ class EditorEditingOperations {
       '#####' => (type: BlockTypes.heading5, attributes: const {}),
       '######' => (type: BlockTypes.heading6, attributes: const {}),
       '-' || '*' || '+' => (type: BlockTypes.bulletList, attributes: const {}),
+      '- []' ||
+      '* []' ||
+      '+ []' ||
+      '- [ ]' ||
+      '* [ ]' ||
+      '+ [ ]' => (type: BlockTypes.todo, attributes: const {'checked': false}),
+      '- [x]' ||
+      '* [x]' ||
+      '+ [x]' ||
+      '- [X]' ||
+      '* [X]' ||
+      '+ [X]' => (type: BlockTypes.todo, attributes: const {'checked': true}),
       '1.' || '1)' => (type: BlockTypes.numberedList, attributes: const {}),
       '>' => (type: BlockTypes.quote, attributes: const {}),
       '[]' ||
@@ -211,6 +243,14 @@ class EditorEditingOperations {
       '```mermaid' => (type: BlockTypes.mermaid, attributes: const {}),
       '```' => (type: BlockTypes.code, attributes: const {}),
       r'$$' => (type: BlockTypes.math, attributes: const {}),
+      _ => null,
+    };
+  }
+
+  ({bool checked})? _todoShortcutReplacement(String marker) {
+    return switch (marker) {
+      '[]' || '[ ]' => (checked: false),
+      '[x]' || '[X]' => (checked: true),
       _ => null,
     };
   }
@@ -876,6 +916,58 @@ class EditorEditingOperations {
       type == BlockTypes.bulletList ||
       type == BlockTypes.numberedList ||
       type == BlockTypes.todo;
+
+  bool _handleListBackspace(BlockNode node) {
+    if (!_isListType(node.type)) return false;
+    final indent = _indentOf(node);
+    if (indent > 0) {
+      _setListIndent(node, indent - 1);
+      controller.collapseSelection(node.id, 0);
+      return true;
+    }
+    _replaceWithParagraph(node, delta: node.delta ?? TextDelta.empty());
+    controller.collapseSelection(node.id, 0);
+    return true;
+  }
+
+  bool _dedentEmptyListItem(BlockNode node) {
+    final indent = _indentOf(node);
+    if (indent <= 0) return false;
+    _setListIndent(node, indent - 1);
+    controller.collapseSelection(node.id, 0);
+    return true;
+  }
+
+  void _setListIndent(BlockNode node, int indent) {
+    final attributes = Map<String, dynamic>.of(node.attributes);
+    if (indent <= 0) {
+      attributes.remove('indent');
+    } else {
+      attributes['indent'] = indent;
+    }
+    if (node.type == BlockTypes.todo) {
+      attributes['checked'] = false;
+    }
+    controller.update(node.id, node.copyWith(attributes: attributes));
+  }
+
+  void _replaceWithParagraph(BlockNode node, {required TextDelta delta}) {
+    controller.update(
+      node.id,
+      node.copyWith(
+        type: BlockTypes.paragraph,
+        attributes: const {},
+        delta: delta,
+      ),
+    );
+  }
+
+  int _indentOf(BlockNode node) => node.attributes['indent'] as int? ?? 0;
+
+  Map<String, dynamic> _indentAttributes(BlockNode node) {
+    final indent = _indentOf(node);
+    return indent <= 0 ? const {} : {'indent': indent};
+  }
 
   int _prevWordBoundary(String text, int offset) {
     var i = offset - 1;
